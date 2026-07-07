@@ -1,40 +1,60 @@
 use eframe::egui;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use crate::flrig;
 
 pub fn run() -> eframe::Result<()> {
+    let state = Arc::new(Mutex::new(String::from("INIT")));
+
     eframe::run_native(
         "HAM CONTROL v02",
         eframe::NativeOptions::default(),
-        Box::new(|_| Box::new(App)),
+        Box::new(|_| Box::new(App {
+            state,
+            last: Instant::now(),
+        })),
     )
 }
 
-struct App;
+struct App {
+    state: Arc<Mutex<String>>,
+    last: std::time::Instant,
+}
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        ctx.request_repaint();
+
+        // 1秒ごとに通信（UIスレッドで安全）
+        if self.last.elapsed() >= Duration::from_secs(1) {
+            self.last = Instant::now();
+
+            if let Ok(xml) = flrig::get_vfo() {
+                let hz = xml
+                    .split("<value>")
+                    .nth(1)
+                    .and_then(|s| s.split("</value>").next())
+                    .unwrap_or("0")
+                    .trim()
+                    .to_string();
+
+                if let Ok(mut s) = self.state.lock() {
+                    *s = hz;
+                }
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("HAM CONTROL v02");
-            ui.separator();
-            ui.label("IC-7000");
-            ui.label("flrig : READY");
-            ui.label("Version : 0.2");
+            ui.colored_label(egui::Color32::GREEN, "VISIBLE TEST OK");
 
-            match flrig::get_vfo() {
-                Ok(xml) => {
-                    if let Some(p1) = xml.find("<value>") {
-                        if let Some(p2) = xml.find("</value>") {
-                            let hz = &xml[p1 + 7..p2];
-                            if let Ok(freq) = hz.parse::<u64>() {
-                                ui.separator();
-                                ui.label(format!("Frequency : {:.6} MHz", freq as f64 / 1_000_000.0));
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    ui.separator();
-                    ui.label(format!("flrig ERROR : {}", e));
+            if let Ok(s) = self.state.lock() {
+                ui.label(format!("RAW VALUE: {}", *s));
+
+                if let Ok(freq) = s.parse::<f64>() {
+                    ui.label(format!("Frequency: {:.6} MHz", freq / 1_000_000.0));
+                } else {
+                    ui.label("WAITING...");
                 }
             }
         });
