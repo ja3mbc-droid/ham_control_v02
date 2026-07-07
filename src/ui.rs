@@ -6,9 +6,14 @@ use crate::flrig;
 pub fn run() -> eframe::Result<()> {
     let state = Arc::new(Mutex::new(String::from("INIT")));
 
+    let options = eframe::NativeOptions {
+        renderer: eframe::Renderer::Glow,
+        ..Default::default()
+    };
+
     eframe::run_native(
         "HAM CONTROL v02",
-        eframe::NativeOptions::default(),
+        options,
         Box::new(|_| Box::new(App {
             state,
             last: Instant::now(),
