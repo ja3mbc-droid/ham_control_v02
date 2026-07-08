@@ -44,12 +44,25 @@ struct App {
 }
 
 fn extract_value(xml: &str) -> String {
-    xml.split("<value>")
+    let inner = xml
+        .split("<value>")
         .nth(1)
         .and_then(|s| s.split("</value>").next())
         .unwrap_or("0")
         .trim()
-        .to_string()
+        .to_string();
+
+    // <i4>123</i4> や <boolean>1</boolean> のような内側タグを剥がす
+    if inner.starts_with('<') {
+        if let Some(gt_pos) = inner.find('>') {
+            let after_open = &inner[gt_pos + 1..];
+            if let Some(lt_pos) = after_open.find('<') {
+                return after_open[..lt_pos].trim().to_string();
+            }
+        }
+    }
+
+    inner
 }
 
 impl eframe::App for App {
@@ -77,9 +90,9 @@ impl eframe::App for App {
             if let Ok(xml) = flrig::get_ptt() {
                 let ptt_raw = extract_value(&xml);
                 let ptt_label = match ptt_raw.as_str() {
-                    "1" => "送信中".to_string(),
-                    "0" => "受信中".to_string(),
-                    other => format!("不明({})", other),
+                    "1" => "TX".to_string(),
+                    "0" => "RX".to_string(),
+                    other => format!("UNKNOWN({})", other),
                 };
                 if let Ok(mut s) = self.state.lock() {
                     s.ptt = ptt_label;
@@ -103,7 +116,7 @@ impl eframe::App for App {
                 ui.separator();
                 ui.label(format!("MODE: {}", s.mode));
 
-                let color = if s.ptt == "送信中" {
+                let color = if s.ptt == "TX" {
                     egui::Color32::RED
                 } else {
                     egui::Color32::LIGHT_GREEN
