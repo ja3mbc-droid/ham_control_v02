@@ -1,11 +1,14 @@
 use reqwest::blocking::Client;
 
-pub fn get_vfo() -> Result<String, String> {
-    let xml = r#"<?xml version="1.0"?>
+fn call_method(method: &str) -> Result<String, String> {
+    let xml = format!(
+        r#"<?xml version="1.0"?>
 <methodCall>
-<methodName>rig.get_vfo</methodName>
+<methodName>{}</methodName>
 <params/>
-</methodCall>"#;
+</methodCall>"#,
+        method
+    );
 
     let client = Client::new();
 
@@ -17,4 +20,16 @@ pub fn get_vfo() -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     response.text().map_err(|e| e.to_string())
+}
+
+pub fn get_vfo() -> Result<String, String> {
+    call_method("rig.get_vfo")
+}
+
+pub fn get_mode() -> Result<String, String> {
+    call_method("rig.get_mode")
+}
+
+pub fn get_ptt() -> Result<String, String> {
+    call_method("rig.get_ptt")
 }
