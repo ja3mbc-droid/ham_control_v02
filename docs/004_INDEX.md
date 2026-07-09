@@ -9,4 +9,7 @@
 
 ---
 
-HAM CONTROL Documentation Version 1.0
+HAM CONTROL Documentation Version 0.1
+
+
+> 📝 バージョン表記について(2026-07-09追記): 当初 Version 1.0 と記載していましたが、AI_HANDOFF.md で「0.1刻みで育て、1.0は基準版完成の区切り」というルールを定めたため、本文書も Version 0.1 として育てていく方針に統一しました。1.0表記だった当時の判断が誤りだったわけではなく、その後の運用ルール確定を受けての統一です。
