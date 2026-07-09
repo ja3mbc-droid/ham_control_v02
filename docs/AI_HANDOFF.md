@@ -89,6 +89,7 @@ hamlog.rs / wsjtx.rs が送信しているUDPメッセージは、**実際のHAM
 | ステータス(Status) | 状態 | |
 | バックエンド(Backend) | 裏方・処理側 | RigBackend trait構想(ChatGPT提案)で使用 |
 | デフォルト(Default) | 既定・初期値 | |
+| docs | ドキュメント集 | GitHub標準のためディレクトリ名は `docs/` のまま |
 
 (今後、使いながら随時見直す。次の更新は Ver 0.2 として追記する)
 
