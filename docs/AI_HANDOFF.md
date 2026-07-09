@@ -34,7 +34,7 @@
 
 | 項目 | 状態 | 担当 |
 |---|---|---|
-| rig.rs | 実装中 | ChatGPT・Claude・マタノ |
+| rig.rs | 完了(抽象化レイヤーとして実装済み) | ChatGPT・Claude・マタノ |
 | config.rs | 未着手 | 予定 |
 | hamlog.rs | 未着手 | 予定 |
 | wsjtx.rs | 未着手 | 予定 |

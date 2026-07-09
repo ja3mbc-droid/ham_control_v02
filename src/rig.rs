@@ -1,5 +1,13 @@
 use crate::flrig;
 
+// 将来構想(未実装): flrig以外のバックエンド(Hamlib, CI-V直結, テスト用ダミー等)にも
+// 対応できるよう、下記のようなtraitで抽象化する案がある(ChatGPT提案、2026-07-09)。
+// 実装は2つ目のバックエンドが実際に必要になってから着手する。
+//
+// pub trait RigBackend {
+//     fn update(&mut self, state: &mut RigState);
+// }
+
 /// リグ(無線機)の現在状態。UI層はこの構造体だけを見る。
 pub struct RigState {
     pub frequency: String,
