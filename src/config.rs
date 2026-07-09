@@ -4,6 +4,7 @@ pub struct Config {
     pub flrig_addr: String,
     pub poll_interval_ms: u64,
     pub hamlog_addr: String,
+    pub wsjtx_addr: String,
 }
 
 impl Default for Config {
@@ -12,6 +13,7 @@ impl Default for Config {
             flrig_addr: "127.0.0.1:12345".to_string(),
             poll_interval_ms: 1000,
             hamlog_addr: "127.0.0.1:2237".to_string(),
+            wsjtx_addr: "127.0.0.1:2237".to_string(),
         }
     }
 }
@@ -31,6 +33,10 @@ pub fn load() -> Config {
 
     if let Ok(addr) = env::var("HAM_HAMLOG_ADDR") {
         cfg.hamlog_addr = addr;
+    }
+
+    if let Ok(addr) = env::var("HAM_WSJTX_ADDR") {
+        cfg.wsjtx_addr = addr;
     }
 
     cfg
