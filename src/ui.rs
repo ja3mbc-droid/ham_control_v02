@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use crate::rig::{self, RigState};
 use crate::config::{self, Config};
+use crate::hamlog;
 
 pub fn run() -> eframe::Result<()> {
     let state = Arc::new(Mutex::new(RigState::default()));
@@ -19,6 +20,8 @@ pub fn run() -> eframe::Result<()> {
             state,
             last: Instant::now(),
             cfg: config::load(),
+            prev_ptt: false,
+            hamlog_status: String::new(),
         })),
     )
 }
@@ -27,6 +30,8 @@ struct App {
     state: Arc<Mutex<RigState>>,
     last: std::time::Instant,
     cfg: Config,
+    prev_ptt: bool,
+    hamlog_status: String,
 }
 
 impl eframe::App for App {
@@ -37,6 +42,15 @@ impl eframe::App for App {
             self.last = Instant::now();
             if let Ok(mut s) = self.state.lock() {
                 rig::update(&mut s, &self.cfg);
+
+                // TX -> RX の変化を検知したらHAMLOGへ送信(送信終了=QSOの区切りとみなす)
+                if self.prev_ptt && !s.ptt {
+                    match hamlog::send(&s, &self.cfg.hamlog_addr) {
+                        Ok(_) => self.hamlog_status = "HAMLOG: SENT OK".to_string(),
+                        Err(e) => self.hamlog_status = format!("HAMLOG: SEND FAILED ({})", e),
+                    }
+                }
+                self.prev_ptt = s.ptt;
             }
         }
 
@@ -62,6 +76,11 @@ impl eframe::App for App {
                     egui::Color32::LIGHT_GREEN
                 };
                 ui.colored_label(color, format!("STATUS: {}", s.ptt_label()));
+            }
+
+            if !self.hamlog_status.is_empty() {
+                ui.separator();
+                ui.label(&self.hamlog_status);
             }
         });
     }
