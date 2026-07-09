@@ -35,8 +35,8 @@
 |---|---|---|
 | rig.rs | 完了(抽象化レイヤーとして実装済み) | ChatGPT・Claude・マタノ |
 | config.rs | 完了(flrig接続先・ポーリング間隔を環境変数で上書き可能) | Claude・マタノ |
-| hamlog.rs | 完了(TX→RX変化を検知しUDP送信。送信先はHAM_HAMLOG_ADDRで設定可能) | Claude・マタノ |
-| wsjtx.rs | 完了(TX→RX変化を検知しUDP送信。送信先はHAM_WSJTX_ADDRで設定可能) | Claude・マタノ |
+| hamlog.rs | 再設計完了(UDP送信→ローカルCSV運用記録に変更。日時/周波数/モード/TX秒数を記録) | Claude・マタノ |
+| wsjtx.rs | 削除(役割が不明確だったため。HAMLOG連携は既存のWSJT-Xパイプラインに委ねる) | - |
 
 ## 重要な発見(2026-07-09、要再設計)
 
