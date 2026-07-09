@@ -3,8 +3,7 @@ use std::env;
 pub struct Config {
     pub flrig_addr: String,
     pub poll_interval_ms: u64,
-    pub hamlog_addr: String,
-    pub wsjtx_addr: String,
+    pub activity_log_path: String,
 }
 
 impl Default for Config {
@@ -12,8 +11,7 @@ impl Default for Config {
         Self {
             flrig_addr: "127.0.0.1:12345".to_string(),
             poll_interval_ms: 1000,
-            hamlog_addr: "127.0.0.1:2237".to_string(),
-            wsjtx_addr: "127.0.0.1:2237".to_string(),
+            activity_log_path: format!("{}/ham_control_v02_activity.csv", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
         }
     }
 }
@@ -31,12 +29,8 @@ pub fn load() -> Config {
         }
     }
 
-    if let Ok(addr) = env::var("HAM_HAMLOG_ADDR") {
-        cfg.hamlog_addr = addr;
-    }
-
-    if let Ok(addr) = env::var("HAM_WSJTX_ADDR") {
-        cfg.wsjtx_addr = addr;
+    if let Ok(path) = env::var("HAM_ACTIVITY_LOG_PATH") {
+        cfg.activity_log_path = path;
     }
 
     cfg
