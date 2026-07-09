@@ -36,8 +36,8 @@
 |---|---|---|
 | rig.rs | 完了(抽象化レイヤーとして実装済み) | ChatGPT・Claude・マタノ |
 | config.rs | 完了(flrig接続先・ポーリング間隔を環境変数で上書き可能) | Claude・マタノ |
-| hamlog.rs | 未着手 | 予定 |
-| wsjtx.rs | 未着手 | 予定 |
+| hamlog.rs | 一部完了(RigState→HAMLOG形式の文字列変換のみ。UDP送信は未実装) | Claude・マタノ |
+| wsjtx.rs | 一部完了(RigState→WSJT-X形式の文字列変換のみ。UDP送信は未実装) | Claude・マタノ |
 
 ## 次回作業予定
 
