@@ -2,6 +2,7 @@ use eframe::egui;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use crate::rig::{self, RigState};
+use crate::config::{self, Config};
 
 pub fn run() -> eframe::Result<()> {
     let state = Arc::new(Mutex::new(RigState::default()));
@@ -17,6 +18,7 @@ pub fn run() -> eframe::Result<()> {
         Box::new(|_| Box::new(App {
             state,
             last: Instant::now(),
+            cfg: config::load(),
         })),
     )
 }
@@ -24,16 +26,17 @@ pub fn run() -> eframe::Result<()> {
 struct App {
     state: Arc<Mutex<RigState>>,
     last: std::time::Instant,
+    cfg: Config,
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         ctx.request_repaint();
 
-        if self.last.elapsed() >= Duration::from_secs(1) {
+        if self.last.elapsed() >= Duration::from_millis(self.cfg.poll_interval_ms) {
             self.last = Instant::now();
             if let Ok(mut s) = self.state.lock() {
-                rig::update(&mut s);
+                rig::update(&mut s, &self.cfg);
             }
         }
 
