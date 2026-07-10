@@ -16,7 +16,22 @@ pub fn run() -> eframe::Result<()> {
     eframe::run_native(
         "HAM CONTROL v02",
         options,
-        Box::new(|_| Box::new(App {
+        Box::new(|cc| {
+            let mut fonts = egui::FontDefinitions::default();
+            let font_bytes = include_bytes!("../assets/NotoSansCJK-Regular.ttc");
+            fonts.font_data.insert(
+                "notosans_cjk".to_owned(),
+                egui::FontData::from_static(font_bytes),
+            );
+            fonts.families.get_mut(&egui::FontFamily::Proportional)
+                .unwrap()
+                .insert(0, "notosans_cjk".to_owned());
+            fonts.families.get_mut(&egui::FontFamily::Monospace)
+                .unwrap()
+                .push("notosans_cjk".to_owned());
+            cc.egui_ctx.set_fonts(fonts);
+
+            Box::new(App {
             state,
             last: Instant::now(),
             cfg: config::load(),
@@ -24,7 +39,11 @@ pub fn run() -> eframe::Result<()> {
             tx_started_at: None,
             tx_started_unix: 0,
             log_status: String::new(),
-        })),
+            callsign_input: String::new(),
+            comment1_input: String::new(),
+            comment2_input: String::new(),
+            })
+        }),
     )
 }
 
@@ -36,6 +55,9 @@ struct App {
     tx_started_at: Option<Instant>,
     tx_started_unix: u64,
     log_status: String,
+    callsign_input: String,
+    comment1_input: String,
+    comment2_input: String,
 }
 
 impl eframe::App for App {
@@ -63,7 +85,14 @@ impl eframe::App for App {
                         .map(|t| t.elapsed().as_secs_f64())
                         .unwrap_or(0.0);
 
-                    match hamlog::append_log(&s, &self.cfg.activity_log_path, self.tx_started_unix) {
+                    match hamlog::append_log(
+                        &s,
+                        &self.cfg.activity_log_path,
+                        self.tx_started_unix,
+                        &self.callsign_input,
+                        &self.comment1_input,
+                        &self.comment2_input,
+                    ) {
                         Ok(_) => self.log_status = format!("LOG: SAVED (TX {:.1}s)", tx_seconds),
                         Err(e) => self.log_status = format!("LOG: FAILED ({})", e),
                     }
@@ -108,6 +137,14 @@ impl eframe::App for App {
                 ui.label("--- DEBUG: SWR RAW XML ---");
                 ui.label(&s.swr_raw_xml);
             }
+
+            ui.separator();
+            ui.label("CALL:");
+            ui.text_edit_singleline(&mut self.callsign_input);
+            ui.label("COMMENT1:");
+            ui.text_edit_singleline(&mut self.comment1_input);
+            ui.label("COMMENT2:");
+            ui.text_edit_singleline(&mut self.comment2_input);
 
             if !self.log_status.is_empty() {
                 ui.separator();

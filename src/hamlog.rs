@@ -48,7 +48,14 @@ fn now_unix_secs() -> u64 {
 /// callsign / comment1 / comment2 は現時点では空欄(将来、手入力欄をGUIに追加予定)。
 ///
 /// 出力項目: TIME_ON, TIME_OFF, FREQ, MODE, CALL, COMMENT1, COMMENT2
-pub fn append_log(state: &RigState, path: &str, tx_started_unix: u64) -> Result<(), String> {
+pub fn append_log(
+    state: &RigState,
+    path: &str,
+    tx_started_unix: u64,
+    callsign: &str,
+    comment1: &str,
+    comment2: &str,
+) -> Result<(), String> {
     let time_on = format_unix_secs(tx_started_unix);
     let time_off = format_unix_secs(now_unix_secs());
 
@@ -56,10 +63,6 @@ pub fn append_log(state: &RigState, path: &str, tx_started_unix: u64) -> Result<
         .frequency_mhz()
         .map(|mhz| format!("{:.6}", mhz))
         .unwrap_or_else(|| "----".to_string());
-
-    let callsign = "";   // 将来: GUIの手入力欄から取得
-    let comment1 = "";   // 将来: GUIの手入力欄から取得
-    let comment2 = "";   // 将来: GUIの手入力欄から取得
 
     let line = format!(
         "{},{},{},{},{},{},{}\n",
