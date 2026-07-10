@@ -66,6 +66,11 @@ pub fn get_swr(addr: &str) -> Result<String, String> {
     call_method(addr, "rig.get_swrmeter").map(|xml| extract_value(&xml))
 }
 
+/// デバッグ用: SWR応答の生XML(未整形)をそのまま取得
+pub fn get_swr_raw_xml(addr: &str) -> Result<String, String> {
+    call_method(addr, "rig.get_swrmeter")
+}
+
 /// 出力パワー値(生の文字列。単位・スケールはリグ機種依存)を取得
 pub fn get_power(addr: &str) -> Result<String, String> {
     call_method(addr, "rig.get_pwrmeter").map(|xml| extract_value(&xml))

@@ -97,6 +97,10 @@ impl eframe::App for App {
                 ui.label(format!("POWER: {}", s.power));
                 ui.label(format!("SPLIT: {}", if s.split { "ON" } else { "OFF" }));
                 ui.label(format!("VFO: {}", s.vfo_ab));
+
+                ui.separator();
+                ui.label("--- DEBUG: SWR RAW XML ---");
+                ui.label(&s.swr_raw_xml);
             }
 
             if !self.log_status.is_empty() {

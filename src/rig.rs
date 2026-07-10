@@ -18,6 +18,7 @@ pub struct RigState {
     pub power: String,
     pub split: bool,
     pub vfo_ab: String,
+    pub swr_raw_xml: String,
 }
 
 impl Default for RigState {
@@ -31,6 +32,7 @@ impl Default for RigState {
             power: "INIT".to_string(),
             split: false,
             vfo_ab: "INIT".to_string(),
+            swr_raw_xml: "INIT".to_string(),
         }
     }
 }
@@ -74,5 +76,9 @@ pub fn update(state: &mut RigState, cfg: &Config) {
 
     if let Ok(vfo_ab) = flrig::get_vfo_ab(&cfg.flrig_addr) {
         state.vfo_ab = vfo_ab;
+    }
+
+    if let Ok(raw) = flrig::get_swr_raw_xml(&cfg.flrig_addr) {
+        state.swr_raw_xml = raw;
     }
 }
