@@ -13,6 +13,7 @@ pub struct RigState {
     pub frequency: String,
     pub mode: String,
     pub ptt: bool,
+    pub smeter: String,
 }
 
 impl Default for RigState {
@@ -21,6 +22,7 @@ impl Default for RigState {
             frequency: "INIT".to_string(),
             mode: "INIT".to_string(),
             ptt: false,
+            smeter: "INIT".to_string(),
         }
     }
 }
@@ -44,5 +46,9 @@ pub fn update(state: &mut RigState, cfg: &Config) {
     }
     if let Ok(ptt) = flrig::get_ptt(&cfg.flrig_addr) {
         state.ptt = ptt;
+    }
+
+    if let Ok(smeter) = flrig::get_smeter(&cfg.flrig_addr) {
+        state.smeter = smeter;
     }
 }

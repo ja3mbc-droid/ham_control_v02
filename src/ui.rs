@@ -90,6 +90,9 @@ impl eframe::App for App {
                     egui::Color32::LIGHT_GREEN
                 };
                 ui.colored_label(color, format!("STATUS: {}", s.ptt_label()));
+
+                ui.separator();
+                ui.label(format!("S-METER: {}", s.smeter));
             }
 
             if !self.log_status.is_empty() {

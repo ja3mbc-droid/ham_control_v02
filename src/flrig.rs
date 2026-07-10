@@ -55,3 +55,8 @@ pub fn get_mode(addr: &str) -> Result<String, String> {
 pub fn get_ptt(addr: &str) -> Result<bool, String> {
     call_method(addr, "rig.get_ptt").map(|xml| extract_value(&xml) == "1")
 }
+
+/// Sメータ値(生の文字列。単位・スケールはリグ機種依存)を取得
+pub fn get_smeter(addr: &str) -> Result<String, String> {
+    call_method(addr, "rig.get_smeter").map(|xml| extract_value(&xml))
+}
