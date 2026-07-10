@@ -36,6 +36,16 @@ fn format_unix_secs(secs: u64) -> String {
     format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC", year, month, day, h, m, s)
 }
 
+/// 外部(ui.rs)から呼べる公開版
+pub fn format_unix_secs_pub(secs: u64) -> String {
+    format_unix_secs(secs)
+}
+
+/// 外部(ui.rs)から呼べる、現在時刻の文字列を返す公開版
+pub fn now_string_pub() -> String {
+    format_unix_secs(now_unix_secs())
+}
+
 fn now_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -55,6 +65,8 @@ pub fn append_log(
     callsign: &str,
     comment1: &str,
     comment2: &str,
+    rst_sent: &str,
+    rst_rcvd: &str,
 ) -> Result<(), String> {
     let time_on = format_unix_secs(tx_started_unix);
     let time_off = format_unix_secs(now_unix_secs());
@@ -65,8 +77,8 @@ pub fn append_log(
         .unwrap_or_else(|| "----".to_string());
 
     let line = format!(
-        "{},{},{},{},{},{},{}\n",
-        time_on, time_off, freq_mhz, state.mode, callsign, comment1, comment2
+        "{},{},{},{},{},{},{},{},{}\n",
+        time_on, time_off, freq_mhz, state.mode, callsign, rst_sent, rst_rcvd, comment1, comment2
     );
 
     let mut file = OpenOptions::new()
@@ -82,5 +94,5 @@ pub fn append_log(
 
 /// CSVヘッダー行(将来、ファイル新規作成時に使う想定)
 pub fn csv_header() -> &'static str {
-    "TIME_ON,TIME_OFF,FREQ,MODE,CALL,COMMENT1,COMMENT2\n"
+    "TIME_ON,TIME_OFF,FREQ,MODE,CALL,RST_SENT,RST_RCVD,COMMENT1,COMMENT2\n"
 }

@@ -42,6 +42,17 @@ pub fn run() -> eframe::Result<()> {
             callsign_input: String::new(),
             comment1_input: String::new(),
             comment2_input: String::new(),
+            rst_sent_input: String::new(),
+            rst_rcvd_input: String::new(),
+            last_time_on: String::new(),
+            last_time_off: String::new(),
+            name_input: String::new(),
+            qth_input: String::new(),
+            gl_input: String::new(),
+            code_input: String::new(),
+            qsl_via_input: String::new(),
+            qsl_sent_input: String::new(),
+            qsl_rcvd_input: String::new(),
             })
         }),
     )
@@ -58,6 +69,17 @@ struct App {
     callsign_input: String,
     comment1_input: String,
     comment2_input: String,
+    rst_sent_input: String,
+    rst_rcvd_input: String,
+    last_time_on: String,
+    last_time_off: String,
+    name_input: String,
+    qth_input: String,
+    gl_input: String,
+    code_input: String,
+    qsl_via_input: String,
+    qsl_sent_input: String,
+    qsl_rcvd_input: String,
 }
 
 impl eframe::App for App {
@@ -76,6 +98,8 @@ impl eframe::App for App {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
+                    self.last_time_on = hamlog::format_unix_secs_pub(self.tx_started_unix);
+                    self.last_time_off = String::new();
                 }
 
                 // TX -> RX: 送信時間を計算してログに記録
@@ -85,6 +109,8 @@ impl eframe::App for App {
                         .map(|t| t.elapsed().as_secs_f64())
                         .unwrap_or(0.0);
 
+                    self.last_time_off = hamlog::now_string_pub();
+
                     match hamlog::append_log(
                         &s,
                         &self.cfg.activity_log_path,
@@ -92,6 +118,8 @@ impl eframe::App for App {
                         &self.callsign_input,
                         &self.comment1_input,
                         &self.comment2_input,
+                        &self.rst_sent_input,
+                        &self.rst_rcvd_input,
                     ) {
                         Ok(_) => self.log_status = format!("LOG: SAVED (TX {:.1}s)", tx_seconds),
                         Err(e) => self.log_status = format!("LOG: FAILED ({})", e),
@@ -139,12 +167,37 @@ impl eframe::App for App {
             }
 
             ui.separator();
-            ui.label("CALL:");
-            ui.text_edit_singleline(&mut self.callsign_input);
-            ui.label("COMMENT1:");
-            ui.text_edit_singleline(&mut self.comment1_input);
-            ui.label("COMMENT2:");
-            ui.text_edit_singleline(&mut self.comment2_input);
+            ui.label(format!("TIME_ON: {}", self.last_time_on));
+            ui.label(format!("TIME_OFF: {}", self.last_time_off));
+            ui.separator();
+
+            ui.columns(2, |cols| {
+                cols[0].label("CALL:");
+                cols[0].text_edit_singleline(&mut self.callsign_input);
+                cols[0].label("NAME:");
+                cols[0].text_edit_singleline(&mut self.name_input);
+                cols[0].label("QTH:");
+                cols[0].text_edit_singleline(&mut self.qth_input);
+                cols[0].label("G.L:");
+                cols[0].text_edit_singleline(&mut self.gl_input);
+                cols[0].label("CODE:");
+                cols[0].text_edit_singleline(&mut self.code_input);
+                cols[0].label("RST SENT:");
+                cols[0].text_edit_singleline(&mut self.rst_sent_input);
+                cols[0].label("RST RCVD:");
+                cols[0].text_edit_singleline(&mut self.rst_rcvd_input);
+
+                cols[1].label("COMMENT1:");
+                cols[1].text_edit_singleline(&mut self.comment1_input);
+                cols[1].label("COMMENT2:");
+                cols[1].text_edit_singleline(&mut self.comment2_input);
+                cols[1].label("QSL VIA:");
+                cols[1].text_edit_singleline(&mut self.qsl_via_input);
+                cols[1].label("QSL SENT:");
+                cols[1].text_edit_singleline(&mut self.qsl_sent_input);
+                cols[1].label("QSL RCVD:");
+                cols[1].text_edit_singleline(&mut self.qsl_rcvd_input);
+            });
 
             if !self.log_status.is_empty() {
                 ui.separator();
