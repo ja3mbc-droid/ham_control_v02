@@ -60,3 +60,23 @@ pub fn get_ptt(addr: &str) -> Result<bool, String> {
 pub fn get_smeter(addr: &str) -> Result<String, String> {
     call_method(addr, "rig.get_smeter").map(|xml| extract_value(&xml))
 }
+
+/// SWR値(生の文字列。単位・スケールはリグ機種依存)を取得
+pub fn get_swr(addr: &str) -> Result<String, String> {
+    call_method(addr, "rig.get_swrmeter").map(|xml| extract_value(&xml))
+}
+
+/// 出力パワー値(生の文字列。単位・スケールはリグ機種依存)を取得
+pub fn get_power(addr: &str) -> Result<String, String> {
+    call_method(addr, "rig.get_pwrmeter").map(|xml| extract_value(&xml))
+}
+
+/// Split状態(true=split有効)を取得
+pub fn get_split(addr: &str) -> Result<bool, String> {
+    call_method(addr, "rig.get_split").map(|xml| extract_value(&xml) == "1")
+}
+
+/// 使用中VFO("A" または "B")を取得
+pub fn get_vfo_ab(addr: &str) -> Result<String, String> {
+    call_method(addr, "rig.get_AB").map(|xml| extract_value(&xml))
+}

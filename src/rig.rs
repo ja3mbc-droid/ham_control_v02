@@ -14,6 +14,10 @@ pub struct RigState {
     pub mode: String,
     pub ptt: bool,
     pub smeter: String,
+    pub swr: String,
+    pub power: String,
+    pub split: bool,
+    pub vfo_ab: String,
 }
 
 impl Default for RigState {
@@ -23,6 +27,10 @@ impl Default for RigState {
             mode: "INIT".to_string(),
             ptt: false,
             smeter: "INIT".to_string(),
+            swr: "INIT".to_string(),
+            power: "INIT".to_string(),
+            split: false,
+            vfo_ab: "INIT".to_string(),
         }
     }
 }
@@ -50,5 +58,21 @@ pub fn update(state: &mut RigState, cfg: &Config) {
 
     if let Ok(smeter) = flrig::get_smeter(&cfg.flrig_addr) {
         state.smeter = smeter;
+    }
+
+    if let Ok(swr) = flrig::get_swr(&cfg.flrig_addr) {
+        state.swr = swr;
+    }
+
+    if let Ok(power) = flrig::get_power(&cfg.flrig_addr) {
+        state.power = power;
+    }
+
+    if let Ok(split) = flrig::get_split(&cfg.flrig_addr) {
+        state.split = split;
+    }
+
+    if let Ok(vfo_ab) = flrig::get_vfo_ab(&cfg.flrig_addr) {
+        state.vfo_ab = vfo_ab;
     }
 }
