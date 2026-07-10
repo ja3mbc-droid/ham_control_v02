@@ -22,6 +22,7 @@ pub fn run() -> eframe::Result<()> {
             cfg: config::load(),
             prev_ptt: false,
             tx_started_at: None,
+            tx_started_unix: 0,
             log_status: String::new(),
         })),
     )
@@ -33,6 +34,7 @@ struct App {
     cfg: Config,
     prev_ptt: bool,
     tx_started_at: Option<Instant>,
+    tx_started_unix: u64,
     log_status: String,
 }
 
@@ -48,6 +50,10 @@ impl eframe::App for App {
                 // RX -> TX: 送信開始時刻を記録
                 if !self.prev_ptt && s.ptt {
                     self.tx_started_at = Some(Instant::now());
+                    self.tx_started_unix = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
                 }
 
                 // TX -> RX: 送信時間を計算してログに記録
@@ -57,7 +63,7 @@ impl eframe::App for App {
                         .map(|t| t.elapsed().as_secs_f64())
                         .unwrap_or(0.0);
 
-                    match hamlog::append_log(&s, &self.cfg.activity_log_path, tx_seconds) {
+                    match hamlog::append_log(&s, &self.cfg.activity_log_path, self.tx_started_unix) {
                         Ok(_) => self.log_status = format!("LOG: SAVED (TX {:.1}s)", tx_seconds),
                         Err(e) => self.log_status = format!("LOG: FAILED ({})", e),
                     }
