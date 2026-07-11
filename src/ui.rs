@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use crate::rig::{self, RigState};
 use crate::config::{self, Config};
 use crate::hamlog;
+use crate::wsjtx_log::{self, QsoStatus};
 
 pub fn run() -> eframe::Result<()> {
     let state = Arc::new(Mutex::new(RigState::default()));
@@ -174,6 +175,27 @@ impl eframe::App for App {
             ui.label(format!("TIME_ON: {}", self.last_time_on));
             ui.label(format!("TIME_OFF: {}", self.last_time_off));
             ui.separator();
+
+            if ui.button("ALL.TXTから読込").clicked() {
+                if let Some((peer, status)) = wsjtx_log::find_latest_qso(&self.cfg.wsjtx_all_txt_path, "JA3MBC") {
+                    match status {
+                        QsoStatus::Complete => {
+                            self.callsign_input = peer;
+                            self.log_status = "ALL.TXT: 完全成立のQSOを読込みました".to_string();
+                        }
+                        QsoStatus::Incomplete => {
+                            self.callsign_input = peer;
+                            self.comment1_input = "[73未確認]".to_string();
+                            self.log_status = "ALL.TXT: 尻切れQSOを読込みました(73未確認)".to_string();
+                        }
+                        QsoStatus::NoResponse => {
+                            self.log_status = "ALL.TXT: 空振り(応答なし)のため読込みません".to_string();
+                        }
+                    }
+                } else {
+                    self.log_status = "ALL.TXT: 該当データが見つかりません".to_string();
+                }
+            }
 
             ui.columns(2, |cols| {
                 cols[0].label("CALL:");
