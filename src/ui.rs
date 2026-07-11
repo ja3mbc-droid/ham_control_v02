@@ -162,12 +162,8 @@ impl eframe::App for App {
                 ui.label(format!("VFO: {}", s.vfo_ab));
 
                 ui.separator();
-                egui::CollapsingHeader::new("DEBUG")
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        ui.label("--- SWR RAW XML ---");
-                        ui.label(&s.swr_raw_xml);
-                    });
+                ui.label("--- DEBUG: SWR RAW XML ---");
+                ui.label(&s.swr_raw_xml);
             }
 
             ui.separator();
