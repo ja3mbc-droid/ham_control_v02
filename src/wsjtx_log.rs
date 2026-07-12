@@ -49,9 +49,20 @@ fn extract_report(msg: &str) -> Option<String> {
 pub fn find_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoInfo> {
     let content = fs::read_to_string(all_txt_path).ok()?;
 
+    // 自局が関わり、かつ CQ 送信ではない行だけを対象にする
+    // (CQ送信は「まだ誰とも交信していない」状態であり、相手局ではない)
     let my_lines: Vec<&str> = content
         .lines()
-        .filter(|line| line.contains(my_call))
+        .filter(|line| {
+            if !line.contains(my_call) {
+                return false;
+            }
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() < 9 {
+                return false;
+            }
+            f[7] != "CQ"
+        })
         .collect();
 
     if my_lines.is_empty() {
