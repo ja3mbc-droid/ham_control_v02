@@ -4,6 +4,7 @@ mod config;
 mod rig;
 mod hamlog;
 mod wsjtx_log;
+mod fldigi_log;
 
 fn main() -> eframe::Result<()> {
     ui::run()
