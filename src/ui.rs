@@ -45,6 +45,7 @@ pub fn run() -> eframe::Result<()> {
             comment2_input: String::new(),
             rst_sent_input: String::new(),
             rst_rcvd_input: String::new(),
+            qso_mode: String::new(),
             last_time_on: String::new(),
             last_time_off: String::new(),
             name_input: String::new(),
@@ -72,6 +73,7 @@ struct App {
     comment2_input: String,
     rst_sent_input: String,
     rst_rcvd_input: String,
+    qso_mode: String,
     last_time_on: String,
     last_time_off: String,
     name_input: String,
@@ -176,15 +178,28 @@ impl eframe::App for App {
             ui.label(format!("TIME_OFF: {}", self.last_time_off));
             ui.separator();
 
+            if !self.qso_mode.is_empty() {
+                ui.label(format!("QSO MODE: {}", self.qso_mode));
+            }
             if ui.button("ALL.TXTから読込").clicked() {
-                if let Some((peer, status)) = wsjtx_log::find_latest_qso(&self.cfg.wsjtx_all_txt_path, "JA3MBC") {
-                    match status {
+                if let Some(info) = wsjtx_log::find_latest_qso(&self.cfg.wsjtx_all_txt_path, "JA3MBC") {
+                    match info.status {
                         QsoStatus::Complete => {
-                            self.callsign_input = peer;
-                            self.log_status = "ALL.TXT: 完全成立のQSOを読込みました".to_string();
+                            self.callsign_input = info.peer_call;
+                            self.rst_sent_input = info.rst_sent;
+                            self.rst_rcvd_input = info.rst_rcvd;
+                            self.last_time_on = info.time_on;
+                            self.last_time_off = info.time_off;
+                            self.qso_mode = info.qso_mode.clone();
+                            self.log_status = format!("ALL.TXT: 完全成立のQSOを読込みました ({} MHz, {})", info.freq_mhz, info.qso_mode);
                         }
                         QsoStatus::Incomplete => {
-                            self.callsign_input = peer;
+                            self.callsign_input = info.peer_call;
+                            self.rst_sent_input = info.rst_sent;
+                            self.rst_rcvd_input = info.rst_rcvd;
+                            self.last_time_on = info.time_on;
+                            self.last_time_off = info.time_off;
+                            self.qso_mode = info.qso_mode.clone();
                             self.comment1_input = "[73未確認]".to_string();
                             self.log_status = "ALL.TXT: 尻切れQSOを読込みました(73未確認)".to_string();
                         }
