@@ -494,3 +494,23 @@ ham_control_v02の設計(尻切れ=[73未確認]の注記付きで記録)は、
 Remarks2欄に「ハムコントロールのテスト中」という手入力コメントが、
 今日の6局すべてに残されている。ham_control_v02のCOMMENT欄とは別に、
 HAMLOG側で直接入力されたもの。
+
+## JT_Linkerの既知のエラー(2026-07-12、発見・記録のみ)
+
+WSJT-X経由でHAMLOGへ転送する際、JT_Linkerが毎回以下のエラーを
+出していることが判明した。マタノさんいわく、以前から発生していたが
+実害がないため無視してきたとのこと。
+
+エラー内容: JT_Linker.Form1.sendHamlog() 内で
+「Object reference not set to an instance of an object」
+(null参照エラー)。トレースにFindWindow32が含まれることから、
+JT_LinkerがHAMLOG本体のウィンドウを名前で探す処理で失敗している
+可能性が高いと推測。HAMLOGのログ入力画面のタイトルバーは
+交信ごとにコールサインを含む動的な文字列になっており
+(例: L O G-[A] JH7OTG 【JARL.mDAT 2026/05/07版】)、
+これがFindWindow32の検索と一致しないことが原因ではないかと推測する。
+
+対応方針: HAMLOGへのデータ受け渡し自体は正常に行われており
+(手動Saveで確実に記録できる)、実害は無い。JT_Linkerは外部ソフトの
+ため、ham_control_v02側での対応は不要と判断。原因の推測のみ記録し、
+深追いはしない。
