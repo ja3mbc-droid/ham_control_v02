@@ -10,6 +10,8 @@ pub fn run() -> eframe::Result<()> {
     let state = Arc::new(Mutex::new(RigState::default()));
 
     let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([700.0, 850.0]),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
