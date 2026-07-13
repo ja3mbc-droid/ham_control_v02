@@ -35,10 +35,17 @@ pub fn run() -> eframe::Result<()> {
                 .push("notosans_cjk".to_owned());
             cc.egui_ctx.set_fonts(fonts);
 
+            let cfg = config::load();
+            let log_manager = LogManager::new(
+                cfg.wsjtx_all_txt_path.clone(),
+                "JA3MBC".to_string(),
+            );
+
             Box::new(App {
             state,
             last: Instant::now(),
-            cfg: config::load(),
+            cfg,
+            log_manager,
             prev_ptt: false,
             tx_started_at: None,
             tx_started_unix: 0,
@@ -67,6 +74,7 @@ struct App {
     state: Arc<Mutex<RigState>>,
     last: std::time::Instant,
     cfg: Config,
+    log_manager: LogManager,
     prev_ptt: bool,
     tx_started_at: Option<Instant>,
     tx_started_unix: u64,
@@ -185,12 +193,7 @@ impl eframe::App for App {
                 ui.label(format!("QSO MODE: {}", self.qso_mode));
             }
             if ui.button("ALL.TXTから読込").clicked() {
-                let manager = LogManager::new(
-                    self.cfg.wsjtx_all_txt_path.clone(),
-                    "JA3MBC".to_string(),
-                );
-
-                if let Some(info) = manager.latest_qso() {
+                if let Some(info) = self.log_manager.latest_qso() {
                     match info.status {
                         Some(QsoStatus::Complete) => {
                             self.callsign_input = info.peer_call;
