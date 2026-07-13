@@ -9,7 +9,7 @@ pub struct WsjtxLogAdapter {
 
 impl LogAdapter for WsjtxLogAdapter {
     fn latest_qso(&self) -> Option<QsoRecord> {
-        find_latest_qso(&self.all_txt_path, &self.my_call)
+        read_latest_qso(&self.all_txt_path, &self.my_call)
     }
 
     fn name(&self) -> &'static str {
@@ -43,7 +43,7 @@ fn extract_report(msg: &str) -> Option<String> {
     }
 }
 
-pub fn find_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoRecord> {
+fn read_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoRecord> {
     let content = fs::read_to_string(all_txt_path).ok()?;
 
     // 自局が関わり、かつ CQ 送信ではない行だけを対象にする
