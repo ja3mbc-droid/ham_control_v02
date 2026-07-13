@@ -1,23 +1,20 @@
 use std::fs;
+use crate::log_adapter::{LogAdapter, QsoRecord, QsoStatus};
 
-/// QSOの状態
-#[derive(Debug, PartialEq)]
-pub enum QsoStatus {
-    Complete,
-    Incomplete,
-    NoResponse,
+/// WSJT-XのALL.TXTを読むアダプタ
+pub struct WsjtxLogAdapter {
+    pub all_txt_path: String,
+    pub my_call: String,
 }
 
-/// ALL.TXTから抽出したQSO情報
-pub struct QsoInfo {
-    pub peer_call: String,
-    pub status: QsoStatus,
-    pub rst_sent: String,
-    pub rst_rcvd: String,
-    pub freq_mhz: String,
-    pub qso_mode: String,
-    pub time_on: String,
-    pub time_off: String,
+impl LogAdapter for WsjtxLogAdapter {
+    fn latest_qso(&self) -> Option<QsoRecord> {
+        find_latest_qso(&self.all_txt_path, &self.my_call)
+    }
+
+    fn name(&self) -> &'static str {
+        "WSJT-X"
+    }
 }
 
 fn parse_datetime(field: &str) -> String {
@@ -46,7 +43,7 @@ fn extract_report(msg: &str) -> Option<String> {
     }
 }
 
-pub fn find_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoInfo> {
+pub fn find_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoRecord> {
     let content = fs::read_to_string(all_txt_path).ok()?;
 
     // 自局が関わり、かつ CQ 送信ではない行だけを対象にする
@@ -153,9 +150,9 @@ pub fn find_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoInfo> {
         QsoStatus::NoResponse
     };
 
-    Some(QsoInfo {
+    Some(QsoRecord {
         peer_call,
-        status,
+        status: Some(status),
         rst_sent,
         rst_rcvd,
         freq_mhz,

@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 use crate::rig::{self, RigState};
 use crate::config::{self, Config};
 use crate::hamlog;
-use crate::wsjtx_log::{self, QsoStatus};
+use crate::wsjtx_log::{self};
+use crate::log_adapter::QsoStatus;
 
 pub fn run() -> eframe::Result<()> {
     let state = Arc::new(Mutex::new(RigState::default()));
@@ -186,7 +187,7 @@ impl eframe::App for App {
             if ui.button("ALL.TXTから読込").clicked() {
                 if let Some(info) = wsjtx_log::find_latest_qso(&self.cfg.wsjtx_all_txt_path, "JA3MBC") {
                     match info.status {
-                        QsoStatus::Complete => {
+                        Some(QsoStatus::Complete) => {
                             self.callsign_input = info.peer_call;
                             self.rst_sent_input = info.rst_sent;
                             self.rst_rcvd_input = info.rst_rcvd;
@@ -195,7 +196,7 @@ impl eframe::App for App {
                             self.qso_mode = info.qso_mode.clone();
                             self.log_status = format!("ALL.TXT: 完全成立のQSOを読込みました ({} MHz, {})", info.freq_mhz, info.qso_mode);
                         }
-                        QsoStatus::Incomplete => {
+                        Some(QsoStatus::Incomplete) => {
                             self.callsign_input = info.peer_call;
                             self.rst_sent_input = info.rst_sent;
                             self.rst_rcvd_input = info.rst_rcvd;
@@ -205,8 +206,11 @@ impl eframe::App for App {
                             self.comment1_input = "[73未確認]".to_string();
                             self.log_status = "ALL.TXT: 尻切れQSOを読込みました(73未確認)".to_string();
                         }
-                        QsoStatus::NoResponse => {
+                        Some(QsoStatus::NoResponse) => {
                             self.log_status = "ALL.TXT: 空振り(応答なし)のため読込みません".to_string();
+                        }
+                        None => {
+                            self.log_status = "ALL.TXT: QSO状態情報なし".to_string();
                         }
                     }
                 } else {
