@@ -17,16 +17,6 @@ impl FldigiLogAdapter {
 impl LogAdapter for FldigiLogAdapter {
     fn latest_qso(&self) -> Option<QsoRecord> {
         find_latest_qso(&self.adif_path)
-            .map(|qso| QsoRecord {
-                peer_call: qso.call,
-                status: Some(QsoStatus::Complete),
-                rst_sent: qso.rst_sent,
-                rst_rcvd: qso.rst_rcvd,
-                freq_mhz: qso.freq_mhz,
-                qso_mode: qso.mode,
-                time_on: qso.time_on,
-                time_off: String::new(),
-            })
     }
 
     fn name(&self) -> &'static str {
@@ -37,16 +27,6 @@ impl LogAdapter for FldigiLogAdapter {
 /// fldigiのlogbook.adif(ADIF形式)から、最新のQSO 1件を抽出する。
 /// 土台段階の実装: 実データが手に入り次第、wsjtx_log.rs の時と同様に
 /// 実際のfldigi出力を確認し、フィールド名や区切りのズレを検証・修正する。
-pub struct FldigiQsoInfo {
-    pub call: String,
-    pub qso_date: String,
-    pub time_on: String,
-    pub freq_mhz: String,
-    pub mode: String,
-    pub rst_sent: String,
-    pub rst_rcvd: String,
-}
-
 /// ADIFの1タグ("<CALL:6>JA3MBC"のような形式)から、
 /// タグ名と値を取り出す簡易パーサ。
 fn parse_adif_record(record: &str) -> std::collections::HashMap<String, String> {
@@ -81,7 +61,7 @@ fn parse_adif_record(record: &str) -> std::collections::HashMap<String, String> 
 }
 
 /// logbook.adif から最新のQSO(最後のレコード)を読み取る。
-pub fn find_latest_qso(adif_path: &str) -> Option<FldigiQsoInfo> {
+pub fn find_latest_qso(adif_path: &str) -> Option<QsoRecord> {
     let content = fs::read_to_string(adif_path).ok()?;
 
     // ヘッダー(<EOH>まで)を除いた本文を、<EOR>区切りでレコードに分割
@@ -91,13 +71,15 @@ pub fn find_latest_qso(adif_path: &str) -> Option<FldigiQsoInfo> {
     let last_record = records.last()?;
     let fields = parse_adif_record(last_record);
 
-    Some(FldigiQsoInfo {
-        call: fields.get("CALL").cloned().unwrap_or_default(),
-        qso_date: fields.get("QSO_DATE").cloned().unwrap_or_default(),
+    Some(QsoRecord {
+        peer_call: fields.get("CALL").cloned().unwrap_or_default(),
+        status: Some(QsoStatus::Complete),
+        
         time_on: fields.get("TIME_ON").cloned().unwrap_or_default(),
         freq_mhz: fields.get("FREQ").cloned().unwrap_or_default(),
-        mode: fields.get("MODE").cloned().unwrap_or_default(),
+        qso_mode: fields.get("MODE").cloned().unwrap_or_default(),
         rst_sent: fields.get("RST_SENT").cloned().unwrap_or_default(),
         rst_rcvd: fields.get("RST_RCVD").cloned().unwrap_or_default(),
+        time_off: fields.get("TIME_OFF").cloned().unwrap_or_default(),
     })
 }

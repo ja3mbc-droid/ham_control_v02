@@ -5,6 +5,7 @@ pub struct Config {
     pub poll_interval_ms: u64,
     pub activity_log_path: String,
     pub wsjtx_all_txt_path: String,
+    pub fldigi_logbook_path: String,
 }
 
 impl Default for Config {
@@ -14,6 +15,7 @@ impl Default for Config {
             poll_interval_ms: 1000,
             activity_log_path: format!("{}/ham_control_v02_activity.csv", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
             wsjtx_all_txt_path: format!("{}/.local/share/WSJT-X/ALL.TXT", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+            fldigi_logbook_path: format!("{}/.fldigi/logbook.adif", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
         }
     }
 }
@@ -37,6 +39,10 @@ pub fn load() -> Config {
 
     if let Ok(path) = env::var("HAM_WSJTX_ALL_TXT_PATH") {
         cfg.wsjtx_all_txt_path = path;
+    }
+
+    if let Ok(path) = env::var("HAM_FLDIGI_LOGBOOK_PATH") {
+        cfg.fldigi_logbook_path = path;
     }
 
     cfg
