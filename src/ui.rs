@@ -186,10 +186,10 @@ impl eframe::App for App {
                 ui.label(format!("QSO MODE: {}", self.qso_mode));
             }
             if ui.button("ALL.TXTから読込").clicked() {
-                let adapter = WsjtxLogAdapter {
-                    all_txt_path: self.cfg.wsjtx_all_txt_path.clone(),
-                    my_call: "JA3MBC".to_string(),
-                };
+                let adapter = WsjtxLogAdapter::new(
+                    self.cfg.wsjtx_all_txt_path.clone(),
+                    "JA3MBC".to_string(),
+                );
 
                 if let Some(info) = adapter.latest_qso() {
                     match info.status {

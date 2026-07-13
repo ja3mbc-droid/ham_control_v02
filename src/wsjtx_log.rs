@@ -7,6 +7,15 @@ pub struct WsjtxLogAdapter {
     pub my_call: String,
 }
 
+impl WsjtxLogAdapter {
+    pub fn new(all_txt_path: String, my_call: String) -> Self {
+        Self {
+            all_txt_path,
+            my_call,
+        }
+    }
+}
+
 impl LogAdapter for WsjtxLogAdapter {
     fn latest_qso(&self) -> Option<QsoRecord> {
         read_latest_qso(&self.all_txt_path, &self.my_call)
