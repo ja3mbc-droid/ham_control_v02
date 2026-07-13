@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 use crate::rig::{self, RigState};
 use crate::config::{self, Config};
 use crate::hamlog;
-use crate::wsjtx_log::{self};
+use crate::wsjtx_log::WsjtxLogAdapter;
+use crate::log_adapter::LogAdapter;
 use crate::log_adapter::QsoStatus;
 
 pub fn run() -> eframe::Result<()> {
@@ -185,7 +186,12 @@ impl eframe::App for App {
                 ui.label(format!("QSO MODE: {}", self.qso_mode));
             }
             if ui.button("ALL.TXTから読込").clicked() {
-                if let Some(info) = wsjtx_log::find_latest_qso(&self.cfg.wsjtx_all_txt_path, "JA3MBC") {
+                let adapter = WsjtxLogAdapter {
+                    all_txt_path: self.cfg.wsjtx_all_txt_path.clone(),
+                    my_call: "JA3MBC".to_string(),
+                };
+
+                if let Some(info) = adapter.latest_qso() {
                     match info.status {
                         Some(QsoStatus::Complete) => {
                             self.callsign_input = info.peer_call;
