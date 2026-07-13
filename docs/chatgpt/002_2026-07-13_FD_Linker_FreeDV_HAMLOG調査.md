@@ -33,3 +33,19 @@ MY GL   : PM74QR
 PORT    : 2237
 
 起動後、FreeDVからのUDP待受状態になっていることを確認。
+
+## 確認済み事項
+
+### 1. FD_Linker Listen 起動確認
+
+FD_Linker Listen Edition Ver2.2.1 の起動を確認。
+
+表示内容：
+
+FD_Linker Listen[Listen Edition] Ver2.2.1
+
+MY CALL : JA3MBC
+MY GL   : PM74QR
+PORT    : 2237
+
+起動後、FreeDVからのUDP待受状態になっていることを確認。
