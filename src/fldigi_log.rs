@@ -1,4 +1,38 @@
 use std::fs;
+use crate::log_adapter::{LogAdapter, QsoRecord, QsoStatus};
+
+/// fldigi logbook.adif を読むAdapter
+pub struct FldigiLogAdapter {
+    pub adif_path: String,
+}
+
+impl FldigiLogAdapter {
+    pub fn new(adif_path: String) -> Self {
+        Self {
+            adif_path,
+        }
+    }
+}
+
+impl LogAdapter for FldigiLogAdapter {
+    fn latest_qso(&self) -> Option<QsoRecord> {
+        find_latest_qso(&self.adif_path)
+            .map(|qso| QsoRecord {
+                peer_call: qso.call,
+                status: Some(QsoStatus::Complete),
+                rst_sent: qso.rst_sent,
+                rst_rcvd: qso.rst_rcvd,
+                freq_mhz: qso.freq_mhz,
+                qso_mode: qso.mode,
+                time_on: qso.time_on,
+                time_off: String::new(),
+            })
+    }
+
+    fn name(&self) -> &'static str {
+        "fldigi"
+    }
+}
 
 /// fldigiのlogbook.adif(ADIF形式)から、最新のQSO 1件を抽出する。
 /// 土台段階の実装: 実データが手に入り次第、wsjtx_log.rs の時と同様に
