@@ -5,6 +5,7 @@ mod rig;
 mod hamlog;
 mod wsjtx_log;
 mod fldigi_log;
+mod freedv_log;
 mod log_adapter;
 mod log_manager;
 
