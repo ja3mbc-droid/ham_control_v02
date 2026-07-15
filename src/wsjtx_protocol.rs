@@ -205,6 +205,21 @@ impl<'a> ByteReader<'a> {
     }
 
 
+    // QDateTime (8byte JulianDay + 4byte msec + 1byte timespec [+4byte UTC offset])
+    pub fn read_qdatetime(&mut self) -> Result<String, String> {
+        if self.remaining() < 13 {
+            return Err("not enough data for QDateTime".into());
+        }
+        let jd = self.read_u64()?;
+        let msec = self.read_u32()?;
+        let timespec_bytes = self.read_bytes(1)?;
+        let timespec = timespec_bytes[0];
+        if timespec == 2 {
+            self.read_bytes(4)?; // UTC offset seconds
+        }
+        Ok(format!("JD{}+{}ms", jd, msec))
+    }
+
     // Qt QString (UTF-8 converted from QString)
     pub fn read_qstring(&mut self) -> Result<String, String> {
 
@@ -273,40 +288,40 @@ pub fn parse_qso_logged(
     Ok(QsoLogged {
 
         date_time_off:
-            reader.read_qstring_fixed()?,
+            reader.read_qdatetime()?,
 
         dx_call:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         dx_grid:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         tx_frequency:
             reader.read_u64()?,
 
         mode:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         report_sent:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         report_received:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         comments:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         name:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         date_time_on:
-            reader.read_qstring_fixed()?,
+            reader.read_qdatetime()?,
 
         my_call:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
 
         my_grid:
-            reader.read_qstring_fixed()?,
+            reader.read_qstring()?,
     })
 }
 
@@ -368,8 +383,10 @@ mod parse_qso_logged_tests {
         let mut data: Vec<u8> = Vec::new();
 
 
-        // date_time_off
-        data.extend(&0u32.to_be_bytes());
+        // date_time_off (QDateTime: 8byte JD + 4byte msec + 1byte timespec)
+        data.extend(&2461236u64.to_be_bytes());
+        data.extend(&44238239u32.to_be_bytes());
+        data.push(1u8); // Qt::UTC
 
         // dx_call
         add_qstring(&mut data, "JA4UIN");
@@ -397,8 +414,10 @@ mod parse_qso_logged_tests {
         // name
         add_qstring(&mut data, "");
 
-        // date_time_on
-        add_qstring(&mut data, "");
+        // date_time_on (QDateTime)
+        data.extend(&2461236u64.to_be_bytes());
+        data.extend(&44238239u32.to_be_bytes());
+        data.push(1u8);
 
         // my_call
         add_qstring(&mut data, "JA3MBC");
@@ -429,19 +448,12 @@ mod parse_qso_logged_tests {
         s: &str
     ) {
 
-        let utf16: Vec<u16> =
-            s.encode_utf16().collect();
+        let bytes = s.as_bytes();
 
-
-        let len =
-            (utf16.len() * 2) as u32;
-
+        let len = bytes.len() as u32;
 
         buf.extend(&len.to_be_bytes());
 
-
-        for c in utf16 {
-            buf.extend(&c.to_be_bytes());
-        }
+        buf.extend(bytes);
     }
 }
