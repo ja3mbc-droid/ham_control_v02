@@ -23,7 +23,7 @@ pub struct QsoRecord {
 
 /// 各ログソフト用アダプタが実装すべき共通インターフェース。
 /// RigBackend(リグ制御の抽象化)と対になる、ログ取得側の抽象化。
-pub trait LogAdapter {
+pub trait LogAdapter: Send + Sync {
     /// 直近のQSO情報を1件取得する。取得できなければNoneを返す。
     fn latest_qso(&self) -> Option<QsoRecord>;
 

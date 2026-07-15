@@ -9,10 +9,19 @@ mod fldigi_log;
 mod freedv_log;
 mod log_adapter;
 mod log_manager;
+mod wsjtx_receiver;
+
+use std::sync::Arc;
+use log_manager::LogManager;
 
 fn main() -> eframe::Result<()> {
-    wsjtx_receiver::start();
+    let cfg = config::load();
+
+    let log_manager = Arc::new(LogManager::new(
+        cfg.wsjtx_all_txt_path.clone(),
+        "JA3MBC".to_string(),
+    ));
+
+    wsjtx_receiver::start(log_manager.clone());
     ui::run()
 }
-
-mod wsjtx_receiver;

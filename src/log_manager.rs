@@ -2,9 +2,11 @@ use crate::log_adapter::{LogAdapter, QsoRecord};
 use crate::wsjtx_log::WsjtxLogAdapter;
 use crate::fldigi_log::FldigiLogAdapter;
 use crate::freedv_log::FreeDvLogAdapter;
+use crate::wsjtx_protocol::QsoLogged;
 
 pub struct LogManager {
     adapters: Vec<Box<dyn LogAdapter>>,
+    freedv: FreeDvLogAdapter,
 }
 
 impl LogManager {
@@ -18,14 +20,12 @@ impl LogManager {
             "~/.fldigi/logbook.adif".to_string(),
         );
 
-        let freedv = FreeDvLogAdapter::new();
-
         Self {
             adapters: vec![
                 Box::new(wsjtx),
                 Box::new(fldigi),
-                Box::new(freedv),
             ],
+            freedv: FreeDvLogAdapter::new(),
         }
     }
 
@@ -38,5 +38,14 @@ impl LogManager {
         }
 
         None
+    }
+
+    /// FreeDVのUDP受信(wsjtx_receiver)から呼ばれる。
+    /// 唯一のFreeDvLogAdapter所有者としてQsoRecordへの変換と保存を担う。
+    pub fn handle_freedv_qso(&self, qso: &QsoLogged) {
+        if let Some(record) = self.freedv.from_qso(qso) {
+            println!("[LogManager] FreeDV QSORecord {:?}", record);
+            // TODO: ここでADIF/CSV/HAMLOGへの実際の書き込みを行う
+        }
     }
 }

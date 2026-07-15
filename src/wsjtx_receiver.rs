@@ -1,4 +1,5 @@
 use std::net::UdpSocket;
+use std::sync::Arc;
 use std::thread;
 
 use crate::wsjtx_protocol::{
@@ -6,14 +7,12 @@ use crate::wsjtx_protocol::{
     parse_qso_logged,
     MessageType,
 };
-use crate::freedv_log::FreeDvLogAdapter;
+use crate::log_manager::LogManager;
 
 
-pub fn start() {
+pub fn start(log_manager: Arc<LogManager>) {
 
-    thread::spawn(|| {
-
-        let freedv = FreeDvLogAdapter::new();
+    thread::spawn(move || {
 
         let socket = UdpSocket::bind("127.0.0.1:2237")
             .expect("WSJT-X UDP bind failed");
@@ -53,9 +52,7 @@ pub fn start() {
 
                                         println!("QSO Logged {:?}", qso);
 
-                                        if let Some(record) = freedv.from_qso(&qso) {
-                                            println!("FreeDV QSORecord {:?}", record);
-                                        }
+                                        log_manager.handle_freedv_qso(&qso);
                                     }
 
                                     Err(e) => {
