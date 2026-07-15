@@ -284,6 +284,10 @@ pub fn parse_qso_logged(
     let mut reader =
         ByteReader::new(payload);
 
+    // ペイロード先頭にはクライアントID文字列("FreeDV"等)が
+    // QString形式(4byte長+可変長データ)で入っているため、
+    // 実データを読む前に読み飛ばす。
+    let _client_id = reader.read_qstring()?;
 
     Ok(QsoLogged {
 
@@ -382,6 +386,9 @@ mod parse_qso_logged_tests {
 
         let mut data: Vec<u8> = Vec::new();
 
+
+        // client id (先頭にQString "FreeDV" が入る)
+        add_qstring(&mut data, "FreeDV");
 
         // date_time_off (QDateTime: 8byte JD + 4byte msec + 1byte timespec)
         data.extend(&2461236u64.to_be_bytes());
