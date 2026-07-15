@@ -179,9 +179,11 @@ pub struct QsoLogged {
     pub mode: String,
     pub report_sent: String,
     pub report_received: String,
+    pub tx_power: String,
     pub comments: String,
     pub name: String,
     pub date_time_on: String,
+    pub op_call: String,
     pub my_call: String,
     pub my_grid: String,
 }
@@ -312,6 +314,9 @@ pub fn parse_qso_logged(
         report_received:
             reader.read_qstring()?,
 
+        tx_power:
+            reader.read_qstring()?,
+
         comments:
             reader.read_qstring()?,
 
@@ -320,6 +325,9 @@ pub fn parse_qso_logged(
 
         date_time_on:
             reader.read_qdatetime()?,
+
+        op_call:
+            reader.read_qstring()?,
 
         my_call:
             reader.read_qstring()?,
@@ -348,9 +356,11 @@ mod qso_logged_tests {
             mode: "DIGITALVOICE".into(),
             report_sent: "59".into(),
             report_received: "59".into(),
+            tx_power: "".into(),
             comments: "".into(),
             name: "".into(),
             date_time_on: "20260715_081437".into(),
+            op_call: "JA3MBC".into(),
             my_call: "JA3MBC".into(),
             my_grid: "PM74qr".into(),
         };
@@ -415,6 +425,9 @@ mod parse_qso_logged_tests {
         // report received
         add_qstring(&mut data, "59");
 
+        // tx_power
+        add_qstring(&mut data, "");
+
         // comments
         add_qstring(&mut data, "");
 
@@ -425,6 +438,9 @@ mod parse_qso_logged_tests {
         data.extend(&2461236u64.to_be_bytes());
         data.extend(&44238239u32.to_be_bytes());
         data.push(1u8);
+
+        // op_call
+        add_qstring(&mut data, "JA3MBC");
 
         // my_call
         add_qstring(&mut data, "JA3MBC");
