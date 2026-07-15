@@ -7,10 +7,11 @@ use crate::wsjtx_protocol::QsoLogged;
 pub struct LogManager {
     adapters: Vec<Box<dyn LogAdapter>>,
     freedv: FreeDvLogAdapter,
+    activity_log_path: String,
 }
 
 impl LogManager {
-    pub fn new(wsjtx_all_txt_path: String, my_call: String) -> Self {
+    pub fn new(wsjtx_all_txt_path: String, my_call: String, activity_log_path: String) -> Self {
         let wsjtx = WsjtxLogAdapter::new(
             wsjtx_all_txt_path,
             my_call,
@@ -26,6 +27,7 @@ impl LogManager {
                 Box::new(fldigi),
             ],
             freedv: FreeDvLogAdapter::new(),
+            activity_log_path,
         }
     }
 
@@ -45,7 +47,15 @@ impl LogManager {
     pub fn handle_freedv_qso(&self, qso: &QsoLogged) {
         if let Some(record) = self.freedv.from_qso(qso) {
             println!("[LogManager] FreeDV QSORecord {:?}", record);
-            // TODO: ここでADIF/CSV/HAMLOGへの実際の書き込みを行う
+
+            match crate::hamlog::append_log_from_record(&record, &self.activity_log_path) {
+                Ok(()) => {
+                    println!("[LogManager] wrote FreeDV QSO to {}", self.activity_log_path);
+                }
+                Err(e) => {
+                    eprintln!("[LogManager] failed to write FreeDV QSO: {}", e);
+                }
+            }
         }
     }
 }

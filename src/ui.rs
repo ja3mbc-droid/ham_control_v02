@@ -7,7 +7,7 @@ use crate::hamlog;
 use crate::log_manager::LogManager;
 use crate::log_adapter::QsoStatus;
 
-pub fn run() -> eframe::Result<()> {
+pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
     let state = Arc::new(Mutex::new(RigState::default()));
 
     let options = eframe::NativeOptions {
@@ -36,10 +36,6 @@ pub fn run() -> eframe::Result<()> {
             cc.egui_ctx.set_fonts(fonts);
 
             let cfg = config::load();
-            let log_manager = LogManager::new(
-                cfg.wsjtx_all_txt_path.clone(),
-                "JA3MBC".to_string(),
-            );
 
             Box::new(App {
             state,
@@ -74,7 +70,7 @@ struct App {
     state: Arc<Mutex<RigState>>,
     last: std::time::Instant,
     cfg: Config,
-    log_manager: LogManager,
+    log_manager: Arc<LogManager>,
     prev_ptt: bool,
     tx_started_at: Option<Instant>,
     tx_started_unix: u64,

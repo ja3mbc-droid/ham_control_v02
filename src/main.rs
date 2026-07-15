@@ -20,8 +20,9 @@ fn main() -> eframe::Result<()> {
     let log_manager = Arc::new(LogManager::new(
         cfg.wsjtx_all_txt_path.clone(),
         "JA3MBC".to_string(),
+        cfg.activity_log_path.clone(),
     ));
 
     wsjtx_receiver::start(log_manager.clone());
-    ui::run()
+    ui::run(log_manager.clone())
 }
