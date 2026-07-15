@@ -32,6 +32,12 @@ impl LogManager {
     }
 
     pub fn latest_qso(&self) -> Option<QsoRecord> {
+        // FreeDVはリアルタイムUDPプッシュのため最優先で確認する
+        if let Some(qso) = self.freedv.latest_qso() {
+            println!("[LogManager] using FreeDV");
+            return Some(qso);
+        }
+
         for adapter in &self.adapters {
             if let Some(qso) = adapter.latest_qso() {
                 println!("[LogManager] using {}", adapter.name());
@@ -56,6 +62,9 @@ impl LogManager {
                     eprintln!("[LogManager] failed to write FreeDV QSO: {}", e);
                 }
             }
+
+            // GUI等のlatest_qso()pollから見えるよう最新値として保持
+            self.freedv.store_latest(record);
         }
     }
 }

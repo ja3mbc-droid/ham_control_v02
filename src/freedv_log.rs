@@ -1,17 +1,19 @@
+use std::sync::Mutex;
 use crate::log_adapter::{LogAdapter, QsoRecord};
 
-pub struct FreeDvLogAdapter;
+pub struct FreeDvLogAdapter {
+    last_qso: Mutex<Option<QsoRecord>>,
+}
 
 
 impl FreeDvLogAdapter {
 
     pub fn new() -> Self {
         println!("[FreeDV] adapter ready");
-        Self
+        Self {
+            last_qso: Mutex::new(None),
+        }
     }
-
-
-
 
     pub fn from_qso(
         &self,
@@ -30,14 +32,13 @@ impl FreeDvLogAdapter {
         })
     }
 
-    pub fn parse(&self, data: &[u8]) -> Option<QsoRecord> {
-
-        println!(
-            "[FreeDV] received {} bytes",
-            data.len()
-        );
-
-        None
+    /// UDP受信でQSOが確定するたびにLogManagerから呼ばれ、
+    /// 最新の1件として保持する。GUI等からのpollはlatest_qso()経由で
+    /// この値を読む。
+    pub fn store_latest(&self, record: QsoRecord) {
+        if let Ok(mut guard) = self.last_qso.lock() {
+            *guard = Some(record);
+        }
     }
 }
 
@@ -45,7 +46,7 @@ impl FreeDvLogAdapter {
 impl LogAdapter for FreeDvLogAdapter {
 
     fn latest_qso(&self) -> Option<QsoRecord> {
-        None
+        self.last_qso.lock().ok()?.clone()
     }
 
 
