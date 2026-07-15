@@ -208,6 +208,7 @@ impl<'a> ByteReader<'a> {
 
 
     // QDateTime (8byte JulianDay + 4byte msec + 1byte timespec [+4byte UTC offset])
+    // "YYYY-MM-DD HH:MM:SS UTC" 形式の文字列に変換して返す(hamlog.rsのformat_unix_secs_pubを利用)
     pub fn read_qdatetime(&mut self) -> Result<String, String> {
         if self.remaining() < 13 {
             return Err("not enough data for QDateTime".into());
@@ -219,7 +220,10 @@ impl<'a> ByteReader<'a> {
         if timespec == 2 {
             self.read_bytes(4)?; // UTC offset seconds
         }
-        Ok(format!("JD{}+{}ms", jd, msec))
+        // Julian Day -> UNIX秒 (JD 2440588 = 1970-01-01)
+        let unix_secs = ((jd as i64 - 2440588) * 86400) + (msec as i64 / 1000);
+        let unix_secs = if unix_secs < 0 { 0 } else { unix_secs as u64 };
+        Ok(crate::hamlog::format_unix_secs_pub(unix_secs))
     }
 
     // Qt QString (UTF-8 converted from QString)
