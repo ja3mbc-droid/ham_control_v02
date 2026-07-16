@@ -11,14 +11,19 @@ pub struct LogManager {
 }
 
 impl LogManager {
-    pub fn new(wsjtx_all_txt_path: String, my_call: String, activity_log_path: String) -> Self {
+    pub fn new(
+        wsjtx_all_txt_path: String,
+        my_call: String,
+        activity_log_path: String,
+        fldigi_logbook_path: String,
+    ) -> Self {
         let wsjtx = WsjtxLogAdapter::new(
             wsjtx_all_txt_path,
             my_call,
         );
 
         let fldigi = FldigiLogAdapter::new(
-            "~/.fldigi/logbook.adif".to_string(),
+            fldigi_logbook_path,
         );
 
         Self {
@@ -32,13 +37,20 @@ impl LogManager {
     }
 
     pub fn latest_qso(&self) -> Option<QsoRecord> {
+        println!("[LogManager] latest_qso() called");
+
         // FreeDVはリアルタイムUDPプッシュのため最優先で確認する
+        println!("[LogManager] checking FreeDV");
         if let Some(qso) = self.freedv.latest_qso() {
             println!("[LogManager] using FreeDV");
             return Some(qso);
         }
 
+        println!("[LogManager] checking adapters");
+
         for adapter in &self.adapters {
+            println!("[LogManager] trying {}", adapter.name());
+
             if let Some(qso) = adapter.latest_qso() {
                 println!("[LogManager] using {}", adapter.name());
                 return Some(qso);

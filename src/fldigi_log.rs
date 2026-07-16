@@ -16,6 +16,7 @@ impl FldigiLogAdapter {
 
 impl LogAdapter for FldigiLogAdapter {
     fn latest_qso(&self) -> Option<QsoRecord> {
+        println!("[Fldigi] reading {}", self.adif_path);
         find_latest_qso(&self.adif_path)
     }
 
@@ -70,6 +71,13 @@ pub fn find_latest_qso(adif_path: &str) -> Option<QsoRecord> {
 
     let last_record = records.last()?;
     let fields = parse_adif_record(last_record);
+
+    println!(
+        "[Fldigi] latest CALL={:?} MODE={:?} FREQ={:?}",
+        fields.get("CALL"),
+        fields.get("MODE"),
+        fields.get("FREQ")
+    );
 
     Some(QsoRecord {
         peer_call: fields.get("CALL").cloned().unwrap_or_default(),

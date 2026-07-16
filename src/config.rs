@@ -15,7 +15,7 @@ impl Default for Config {
             poll_interval_ms: 1000,
             activity_log_path: format!("{}/ham_control_v02_activity.csv", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
             wsjtx_all_txt_path: format!("{}/.local/share/WSJT-X/ALL.TXT", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
-            fldigi_logbook_path: format!("{}/.fldigi/logbook.adif", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+            fldigi_logbook_path: format!("{}/.fldigi/logs/logbook.adif", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
         }
     }
 }
