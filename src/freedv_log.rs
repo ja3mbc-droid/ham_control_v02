@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use crate::log_adapter::{LogAdapter, QsoRecord};
+use crate::log_adapter::{LogAdapter, QsoRecord, QsoStatus};
 
 pub struct FreeDvLogAdapter {
     last_qso: Mutex<Option<QsoRecord>>,
@@ -22,7 +22,9 @@ impl FreeDvLogAdapter {
 
         Some(QsoRecord {
             peer_call: qso.dx_call.clone(),
-            status: None,
+            // FreeDVの「Confirm Log...」でOKされた時点で交信は完結しているため、
+            // WSJT-Xのような73確認判定は不要でCompleteとする
+            status: Some(QsoStatus::Complete),
             rst_sent: qso.report_sent.clone(),
             rst_rcvd: qso.report_received.clone(),
             freq_mhz: qso.tx_frequency.to_string(),
