@@ -27,7 +27,7 @@ impl FreeDvLogAdapter {
             status: Some(QsoStatus::Complete),
             rst_sent: qso.report_sent.clone(),
             rst_rcvd: qso.report_received.clone(),
-            freq_mhz: qso.tx_frequency.to_string(),
+            freq_mhz: format!("{:.6}", qso.tx_frequency as f64 / 1_000_000.0),
             qso_mode: qso.mode.clone(),
             time_on: qso.date_time_on.clone(),
             time_off: qso.date_time_off.clone(),

@@ -63,6 +63,19 @@ impl LogManager {
                 }
             }
 
+            let adif_path = format!(
+                "{}/ham_control_v02.adi",
+                std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+            );
+            match crate::hamlog::append_adif_from_record(&record, &adif_path) {
+                Ok(()) => {
+                    println!("[LogManager] wrote FreeDV QSO to {}", adif_path);
+                }
+                Err(e) => {
+                    eprintln!("[LogManager] failed to write FreeDV QSO to ADIF: {}", e);
+                }
+            }
+
             // GUI等のlatest_qso()pollから見えるよう最新値として保持
             self.freedv.store_latest(record);
         }

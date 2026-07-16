@@ -92,6 +92,74 @@ pub fn append_log(
     Ok(())
 }
 
+/// "YYYY-MM-DD HH:MM:SS UTC"形式の文字列から、ADIF用のQSO_DATE(YYYYMMDD)と
+/// TIME_ON/TIME_OFF(HHMMSS)を取り出す。想定外の形式なら空文字列を返す。
+fn split_datetime_for_adif(dt: &str) -> (String, String) {
+    let mut parts = dt.split_whitespace();
+    let date_part = parts.next().unwrap_or("");
+    let time_part = parts.next().unwrap_or("");
+
+    let date_digits: String = date_part.chars().filter(|c| c.is_ascii_digit()).collect();
+    let time_digits: String = time_part.chars().filter(|c| c.is_ascii_digit()).collect();
+
+    (date_digits, time_digits)
+}
+
+/// ADIFの1タグを "<NAME:LEN>VALUE" 形式で組み立てる。
+fn adif_tag(name: &str, value: &str) -> String {
+    format!("<{}:{}>{}", name, value.chars().count(), value)
+}
+
+/// QsoRecordから1件のADIFレコード(EOR区切り)を組み立て、ファイルへ追記する。
+/// ファイルが存在しなければ、ADIFヘッダー(<EOH>まで)を先頭に書き込む。
+pub fn append_adif_from_record(
+    record: &crate::log_adapter::QsoRecord,
+    path: &str,
+) -> Result<(), String> {
+    let file_exists = std::path::Path::new(path).exists();
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+
+    if !file_exists {
+        let header = format!(
+            "ham_control_v02 ADIF export\n<PROGRAMID:13>ham_control_v02\n<EOH>\n"
+        );
+        file.write_all(header.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    let (qso_date, time_on) = split_datetime_for_adif(&record.time_on);
+    let (_, time_off) = split_datetime_for_adif(&record.time_off);
+
+    let mut line = String::new();
+    line.push_str(&adif_tag("CALL", &record.peer_call));
+    if !qso_date.is_empty() {
+        line.push_str(&adif_tag("QSO_DATE", &qso_date));
+    }
+    if !time_on.is_empty() {
+        line.push_str(&adif_tag("TIME_ON", &time_on));
+    }
+    if !time_off.is_empty() {
+        line.push_str(&adif_tag("TIME_OFF", &time_off));
+    }
+    line.push_str(&adif_tag("FREQ", &record.freq_mhz));
+    line.push_str(&adif_tag("MODE", &record.qso_mode));
+    if !record.rst_sent.is_empty() {
+        line.push_str(&adif_tag("RST_SENT", &record.rst_sent));
+    }
+    if !record.rst_rcvd.is_empty() {
+        line.push_str(&adif_tag("RST_RCVD", &record.rst_rcvd));
+    }
+    line.push_str("<EOR>\n");
+
+    file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /// CSVヘッダー行(将来、ファイル新規作成時に使う想定)
 pub fn csv_header() -> &'static str {
     "TIME_ON,TIME_OFF,FREQ,MODE,CALL,RST_SENT,RST_RCVD,COMMENT1,COMMENT2\n"
