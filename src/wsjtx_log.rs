@@ -177,7 +177,10 @@ fn read_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoRecord> {
 /// 入り乱れていても、各局ごとの交信記録を漏れなく拾える。
 ///
 /// 戻り値は、ファイル中で各相手局が最初に登場した順。
+
 pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
+    const SESSION_GAP_SECS: i64 = 900; // 15分
+
     let content = match fs::read_to_string(all_txt_path) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
@@ -197,105 +200,123 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
         })
         .collect();
 
-    // 相手局ごとにグループ化(登場順を保持)
-    let mut order: Vec<String> = Vec::new();
-    let mut groups: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
+    struct Session {
+        result_index: usize,
+        last_date: String,
+        last_secs: i64,
+        completed: bool,
+    }
+
+    let mut result: Vec<QsoRecord> = Vec::new();
+    let mut open_sessions: std::collections::HashMap<String, Session> =
+        std::collections::HashMap::new();
 
     for line in &my_lines {
         let fields: Vec<&str> = line.split_whitespace().collect();
         if fields.len() < 10 {
             continue;
         }
+
         let sender = fields[7];
         let receiver = fields[8];
+
         let peer_call = if sender == my_call {
             receiver.to_string()
         } else {
             sender.to_string()
         };
 
-        if !groups.contains_key(&peer_call) {
-            order.push(peer_call.clone());
-        }
-        groups.entry(peer_call).or_default().push(line);
-    }
+        let freq_mhz = fields[1].to_string();
+        let qso_mode = fields[3].to_string();
 
-    let mut result = Vec::new();
+        let dir = fields[2];
+        let msg = fields[9];
 
-    for peer_call in order {
-        let lines = match groups.get(&peer_call) {
-            Some(l) if !l.is_empty() => l,
-            _ => continue,
+        let time_str = parse_datetime(fields[0]);
+        let (date_part, secs_of_day) =
+            parse_ymd_hms(&time_str).unwrap_or((String::new(), -1));
+
+        let needs_new_session = match open_sessions.get(&peer_call) {
+            None => true,
+            Some(session) => {
+                session.completed
+                    || date_part.is_empty()
+                    || session.last_date.is_empty()
+                    || date_part != session.last_date
+                    || secs_of_day < 0
+                    || session.last_secs < 0
+                    || (secs_of_day - session.last_secs).abs() > SESSION_GAP_SECS
+            }
         };
 
-        let freq_mhz = lines
-            .first()
-            .and_then(|line| line.split_whitespace().nth(1))
-            .unwrap_or("----")
-            .to_string();
+        if needs_new_session {
+            result.push(QsoRecord {
+                peer_call: peer_call.clone(),
+                status: Some(QsoStatus::NoResponse),
+                rst_sent: String::new(),
+                rst_rcvd: String::new(),
+                freq_mhz,
+                qso_mode,
+                time_on: time_str.clone(),
+                time_off: time_str.clone(),
+            });
 
-        let qso_mode = lines
-            .first()
-            .and_then(|line| line.split_whitespace().nth(3))
-            .unwrap_or("----")
-            .to_string();
+            open_sessions.insert(
+                peer_call.clone(),
+                Session {
+                    result_index: result.len() - 1,
+                    last_date: date_part.clone(),
+                    last_secs: secs_of_day,
+                    completed: false,
+                },
+            );
+        }
 
-        let time_on = lines
-            .first()
-            .and_then(|line| line.split_whitespace().next())
-            .map(parse_datetime)
-            .unwrap_or_default();
+        let session = open_sessions.get_mut(&peer_call).unwrap();
+        let record = &mut result[session.result_index];
 
-        let time_off = lines
-            .last()
-            .and_then(|line| line.split_whitespace().next())
-            .map(parse_datetime)
-            .unwrap_or_default();
+        record.time_off = time_str.clone();
 
-        let mut rst_sent = String::new();
-        let mut rst_rcvd = String::new();
-        let mut has_73 = false;
+        if msg == "73" || msg == "RR73" {
+            session.completed = true;
+            record.status = Some(QsoStatus::Complete);
+        }
 
-        for line in lines {
-            let f: Vec<&str> = line.split_whitespace().collect();
-            if f.len() < 10 {
-                continue;
+        if let Some(report) = extract_report(msg) {
+            if dir == "Tx" {
+                record.rst_sent = report;
+            } else {
+                record.rst_rcvd = report;
             }
-            let dir = f[2];
-            let msg = f[9];
 
-            if msg == "73" || msg == "RR73" {
-                has_73 = true;
-            }
-
-            if let Some(report) = extract_report(msg) {
-                if dir == "Tx" {
-                    rst_sent = report;
-                } else {
-                    rst_rcvd = report;
-                }
+            if record.status != Some(QsoStatus::Complete) {
+                record.status = Some(QsoStatus::Incomplete);
             }
         }
 
-        let status = if has_73 {
-            QsoStatus::Complete
-        } else if !rst_sent.is_empty() || !rst_rcvd.is_empty() {
-            QsoStatus::Incomplete
-        } else {
-            QsoStatus::NoResponse
-        };
-
-        result.push(QsoRecord {
-            peer_call,
-            status: Some(status),
-            rst_sent,
-            rst_rcvd,
-            freq_mhz,
-            qso_mode,
-            time_on,
-            time_off,
-        });
+        if !date_part.is_empty() {
+            session.last_date = date_part;
+        }
+        session.last_secs = secs_of_day;
     }
 
     result
+}
+
+fn parse_ymd_hms(dt: &str) -> Option<(String, i64)> {
+    let mut parts = dt.splitn(2, ' ');
+    let date = parts.next()?.to_string();
+    let time = parts.next()?;
+
+    let t: Vec<&str> = time.split(':').collect();
+
+    if t.len() != 3 {
+        return None;
+    }
+
+    let h: i64 = t[0].parse().ok()?;
+    let m: i64 = t[1].parse().ok()?;
+    let s: i64 = t[2].parse().ok()?;
+
+    Some((date, h * 3600 + m * 60 + s))
 }
