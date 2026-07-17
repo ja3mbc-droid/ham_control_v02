@@ -10,6 +10,7 @@ mod freedv_log;
 mod log_adapter;
 mod log_manager;
 mod wsjtx_receiver;
+mod wsjtx_poller;
 
 use std::sync::Arc;
 use log_manager::LogManager;
@@ -25,5 +26,6 @@ fn main() -> eframe::Result<()> {
     ));
 
     wsjtx_receiver::start(log_manager.clone());
+    wsjtx_poller::start(log_manager.clone(), 5);
     ui::run(log_manager.clone())
 }

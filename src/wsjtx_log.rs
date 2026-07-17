@@ -170,3 +170,132 @@ fn read_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoRecord> {
         time_off,
     })
 }
+
+/// ALL.TXT内の自局が関わる行を、相手コールサインごとにグループ化してQsoRecordへ変換する。
+/// read_latest_qso()と違い「末尾から連続する1ブロック」だけでなく、ファイル全体を
+/// 相手局ごとにグループ化するため、パイルアップで複数局のやり取りが時系列上で
+/// 入り乱れていても、各局ごとの交信記録を漏れなく拾える。
+///
+/// 戻り値は、ファイル中で各相手局が最初に登場した順。
+pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
+    let content = match fs::read_to_string(all_txt_path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let my_lines: Vec<&str> = content
+        .lines()
+        .filter(|line| {
+            if !line.contains(my_call) {
+                return false;
+            }
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() < 9 {
+                return false;
+            }
+            f[7] != "CQ"
+        })
+        .collect();
+
+    // 相手局ごとにグループ化(登場順を保持)
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
+
+    for line in &my_lines {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 10 {
+            continue;
+        }
+        let sender = fields[7];
+        let receiver = fields[8];
+        let peer_call = if sender == my_call {
+            receiver.to_string()
+        } else {
+            sender.to_string()
+        };
+
+        if !groups.contains_key(&peer_call) {
+            order.push(peer_call.clone());
+        }
+        groups.entry(peer_call).or_default().push(line);
+    }
+
+    let mut result = Vec::new();
+
+    for peer_call in order {
+        let lines = match groups.get(&peer_call) {
+            Some(l) if !l.is_empty() => l,
+            _ => continue,
+        };
+
+        let freq_mhz = lines
+            .first()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .unwrap_or("----")
+            .to_string();
+
+        let qso_mode = lines
+            .first()
+            .and_then(|line| line.split_whitespace().nth(3))
+            .unwrap_or("----")
+            .to_string();
+
+        let time_on = lines
+            .first()
+            .and_then(|line| line.split_whitespace().next())
+            .map(parse_datetime)
+            .unwrap_or_default();
+
+        let time_off = lines
+            .last()
+            .and_then(|line| line.split_whitespace().next())
+            .map(parse_datetime)
+            .unwrap_or_default();
+
+        let mut rst_sent = String::new();
+        let mut rst_rcvd = String::new();
+        let mut has_73 = false;
+
+        for line in lines {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() < 10 {
+                continue;
+            }
+            let dir = f[2];
+            let msg = f[9];
+
+            if msg == "73" || msg == "RR73" {
+                has_73 = true;
+            }
+
+            if let Some(report) = extract_report(msg) {
+                if dir == "Tx" {
+                    rst_sent = report;
+                } else {
+                    rst_rcvd = report;
+                }
+            }
+        }
+
+        let status = if has_73 {
+            QsoStatus::Complete
+        } else if !rst_sent.is_empty() || !rst_rcvd.is_empty() {
+            QsoStatus::Incomplete
+        } else {
+            QsoStatus::NoResponse
+        };
+
+        result.push(QsoRecord {
+            peer_call,
+            status: Some(status),
+            rst_sent,
+            rst_rcvd,
+            freq_mhz,
+            qso_mode,
+            time_on,
+            time_off,
+        });
+    }
+
+    result
+}
