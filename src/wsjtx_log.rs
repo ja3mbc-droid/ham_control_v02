@@ -214,7 +214,6 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
         result_index: usize,
         last_date: String,
         last_secs: i64,
-        completed: bool,
     }
 
     let mut result: Vec<QsoRecord> = Vec::new();
@@ -241,12 +240,16 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
         let time_str = parse_datetime(fields[0]);
         let (date_part, secs_of_day) = parse_ymd_hms(&time_str).unwrap_or((String::new(), -1));
 
-        // 新しいセッションを始めるべきか判定
+        // 新しいセッションを始めるべきか判定。
+        // 「既に73/RR73で完了しているか」は判定材料にしない。RR73を受けた後に
+        // 自分から73を返すのはFT8の正常な締めくくりであり、これを新セッション
+        // 扱いにすると、正常な1回の交信が2件に分裂してしまう(実機で確認済み)。
+        // 時間間隔だけで判定すれば、7/12と7/17のような別日の交信を誤結合する
+        // 元のバグも(5日分の間隔があるので)問題なく防げる。
         let needs_new_session = match open_sessions.get(&peer_call) {
             None => true,
             Some(session) => {
-                session.completed
-                    || date_part.is_empty()
+                date_part.is_empty()
                     || session.last_date.is_empty()
                     || date_part != session.last_date
                     || secs_of_day < 0
@@ -272,7 +275,6 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
                     result_index: result.len() - 1,
                     last_date: date_part.clone(),
                     last_secs: secs_of_day,
-                    completed: false,
                 },
             );
         }
@@ -284,7 +286,6 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
         record.time_off = time_str;
 
         if msg == "73" || msg == "RR73" {
-            session.completed = true;
             record.status = Some(QsoStatus::Complete);
         }
 
