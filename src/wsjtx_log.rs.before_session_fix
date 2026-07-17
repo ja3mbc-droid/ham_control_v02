@@ -171,25 +171,13 @@ fn read_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoRecord> {
     })
 }
 
-/// ALL.TXT内の自局が関わる行を、相手コールサインごとに「セッション」単位で
-/// グループ化してQsoRecordへ変換する。
-///
-/// 単純に相手コールサインだけでグループ化すると、同じ局と別の日・別の時間帯に
-/// 複数回交信した場合(再交信、ローバンドでの再会等)に、それらが1つの交信として
-/// 誤って結合されてしまう(例: TIME_ONが数日前、TIME_OFFが今日、という壊れた記録)。
-/// これを避けるため、同じ相手局でも「前回のやり取りから一定時間以上space空いた」
-/// または「既に73/RR73で完了しているセッションの後に、また同じ局の行が現れた」
-/// 場合は、新しいセッションとして区切る。
-///
+/// ALL.TXT内の自局が関わる行を、相手コールサインごとにグループ化してQsoRecordへ変換する。
 /// read_latest_qso()と違い「末尾から連続する1ブロック」だけでなく、ファイル全体を
-/// 対象にするため、パイルアップで複数局のやり取りが時系列上で入り乱れていても、
-/// 各局・各セッションの交信記録を漏れなく拾える。
+/// 相手局ごとにグループ化するため、パイルアップで複数局のやり取りが時系列上で
+/// 入り乱れていても、各局ごとの交信記録を漏れなく拾える。
 ///
-/// 戻り値は、各セッションがファイル中で開始した順。
+/// 戻り値は、ファイル中で各相手局が最初に登場した順。
 pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
-    // 同じ局との交信でも、これ以上間隔が空いたら別セッションとみなす(秒)
-    const SESSION_GAP_SECS: i64 = 900; // 15分
-
     let content = match fs::read_to_string(all_txt_path) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
@@ -209,16 +197,9 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
         })
         .collect();
 
-    // 各セッションの構築中データ
-    struct Session {
-        result_index: usize,
-        last_date: String,
-        last_secs: i64,
-        completed: bool,
-    }
-
-    let mut result: Vec<QsoRecord> = Vec::new();
-    let mut open_sessions: std::collections::HashMap<String, Session> = std::collections::HashMap::new();
+    // 相手局ごとにグループ化(登場順を保持)
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
 
     for line in &my_lines {
         let fields: Vec<&str> = line.split_whitespace().collect();
@@ -233,94 +214,88 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
             sender.to_string()
         };
 
-        let freq_mhz = fields.get(1).unwrap_or(&"----").to_string();
-        let qso_mode = fields.get(3).unwrap_or(&"----").to_string();
-        let dir = fields[2];
-        let msg = fields[9];
+        if !groups.contains_key(&peer_call) {
+            order.push(peer_call.clone());
+        }
+        groups.entry(peer_call).or_default().push(line);
+    }
 
-        let time_str = parse_datetime(fields[0]);
-        let (date_part, secs_of_day) = parse_ymd_hms(&time_str).unwrap_or((String::new(), -1));
+    let mut result = Vec::new();
 
-        // 新しいセッションを始めるべきか判定
-        let needs_new_session = match open_sessions.get(&peer_call) {
-            None => true,
-            Some(session) => {
-                session.completed
-                    || date_part.is_empty()
-                    || session.last_date.is_empty()
-                    || date_part != session.last_date
-                    || secs_of_day < 0
-                    || session.last_secs < 0
-                    || (secs_of_day - session.last_secs).abs() > SESSION_GAP_SECS
-            }
+    for peer_call in order {
+        let lines = match groups.get(&peer_call) {
+            Some(l) if !l.is_empty() => l,
+            _ => continue,
         };
 
-        if needs_new_session {
-            result.push(QsoRecord {
-                peer_call: peer_call.clone(),
-                status: Some(QsoStatus::NoResponse),
-                rst_sent: String::new(),
-                rst_rcvd: String::new(),
-                freq_mhz,
-                qso_mode,
-                time_on: time_str.clone(),
-                time_off: time_str.clone(),
-            });
-            open_sessions.insert(
-                peer_call.clone(),
-                Session {
-                    result_index: result.len() - 1,
-                    last_date: date_part.clone(),
-                    last_secs: secs_of_day,
-                    completed: false,
-                },
-            );
-        }
+        let freq_mhz = lines
+            .first()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .unwrap_or("----")
+            .to_string();
 
-        // 該当セッションのレコードを更新
-        let session = open_sessions.get_mut(&peer_call).unwrap();
-        let record = &mut result[session.result_index];
+        let qso_mode = lines
+            .first()
+            .and_then(|line| line.split_whitespace().nth(3))
+            .unwrap_or("----")
+            .to_string();
 
-        record.time_off = time_str;
+        let time_on = lines
+            .first()
+            .and_then(|line| line.split_whitespace().next())
+            .map(parse_datetime)
+            .unwrap_or_default();
 
-        if msg == "73" || msg == "RR73" {
-            session.completed = true;
-            record.status = Some(QsoStatus::Complete);
-        }
+        let time_off = lines
+            .last()
+            .and_then(|line| line.split_whitespace().next())
+            .map(parse_datetime)
+            .unwrap_or_default();
 
-        if let Some(report) = extract_report(msg) {
-            if dir == "Tx" {
-                record.rst_sent = report;
-            } else {
-                record.rst_rcvd = report;
+        let mut rst_sent = String::new();
+        let mut rst_rcvd = String::new();
+        let mut has_73 = false;
+
+        for line in lines {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() < 10 {
+                continue;
             }
-            if record.status != Some(QsoStatus::Complete) {
-                record.status = Some(QsoStatus::Incomplete);
+            let dir = f[2];
+            let msg = f[9];
+
+            if msg == "73" || msg == "RR73" {
+                has_73 = true;
+            }
+
+            if let Some(report) = extract_report(msg) {
+                if dir == "Tx" {
+                    rst_sent = report;
+                } else {
+                    rst_rcvd = report;
+                }
             }
         }
 
-        if !date_part.is_empty() {
-            session.last_date = date_part;
-        }
-        session.last_secs = secs_of_day;
+        let status = if has_73 {
+            QsoStatus::Complete
+        } else if !rst_sent.is_empty() || !rst_rcvd.is_empty() {
+            QsoStatus::Incomplete
+        } else {
+            QsoStatus::NoResponse
+        };
+
+        result.push(QsoRecord {
+            peer_call,
+            status: Some(status),
+            rst_sent,
+            rst_rcvd,
+            freq_mhz,
+            qso_mode,
+            time_on,
+            time_off,
+        });
     }
 
     result
-}
-
-/// "YYYY-MM-DD HH:MM:SS"形式の文字列から、日付部分とその日の経過秒数を取り出す。
-/// セッションの時間ギャップ判定に使う(同一日内の粗い経過時間比較のみが目的で、
-/// 日をまたぐ場合は呼び出し側でdate不一致として新セッション扱いになる)。
-fn parse_ymd_hms(dt: &str) -> Option<(String, i64)> {
-    let mut parts = dt.splitn(2, ' ');
-    let date = parts.next()?.to_string();
-    let time = parts.next()?;
-    let t: Vec<&str> = time.split(':').collect();
-    if t.len() != 3 {
-        return None;
-    }
-    let h: i64 = t[0].parse().ok()?;
-    let m: i64 = t[1].parse().ok()?;
-    let s: i64 = t[2].parse().ok()?;
-    Some((date, h * 3600 + m * 60 + s))
 }
