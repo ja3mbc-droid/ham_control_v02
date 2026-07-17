@@ -196,7 +196,7 @@ impl eframe::App for App {
                 ui.radio_value(&mut self.log_source_selected, "FreeDV".to_string(), "FreeDV");
                 ui.radio_value(&mut self.log_source_selected, "fldigi".to_string(), "fldigi");
             });
-            if ui.button("ALL.TXTから読込").clicked() {
+            if ui.button("選択ソースから読込").clicked() {
                 if let Some(info) = self.log_manager.latest_qso_by_source(&self.log_source_selected) {
                     match info.status {
                         Some(QsoStatus::Complete) => {
@@ -206,7 +206,7 @@ impl eframe::App for App {
                             self.last_time_on = info.time_on;
                             self.last_time_off = info.time_off;
                             self.qso_mode = info.qso_mode.clone();
-                            self.log_status = format!("ALL.TXT: 完全成立のQSOを読込みました ({} MHz, {})", info.freq_mhz, info.qso_mode);
+                            self.log_status = format!("{}: 完全成立のQSOを読込みました ({} MHz, {})", self.log_source_selected, info.freq_mhz, info.qso_mode);
                         }
                         Some(QsoStatus::Incomplete) => {
                             self.callsign_input = info.peer_call;
@@ -216,17 +216,17 @@ impl eframe::App for App {
                             self.last_time_off = info.time_off;
                             self.qso_mode = info.qso_mode.clone();
                             self.comment1_input = "[73未確認]".to_string();
-                            self.log_status = "ALL.TXT: 尻切れQSOを読込みました(73未確認)".to_string();
+                            self.log_status = format!("{}: 尻切れQSOを読込みました(73未確認)", self.log_source_selected);
                         }
                         Some(QsoStatus::NoResponse) => {
-                            self.log_status = "ALL.TXT: 空振り(応答なし)のため読込みません".to_string();
+                            self.log_status = format!("{}: 空振り(応答なし)のため読込みません", self.log_source_selected);
                         }
                         None => {
-                            self.log_status = "ALL.TXT: QSO状態情報なし".to_string();
+                            self.log_status = format!("{}: QSO状態情報なし", self.log_source_selected);
                         }
                     }
                 } else {
-                    self.log_status = "ALL.TXT: 該当データが見つかりません".to_string();
+                    self.log_status = format!("{}: 該当データが見つかりません", self.log_source_selected);
                 }
             }
 
