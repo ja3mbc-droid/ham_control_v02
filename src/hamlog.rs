@@ -114,6 +114,7 @@ fn adif_tag(name: &str, value: &str) -> String {
 /// ファイルが存在しなければ、ADIFヘッダー(<EOH>まで)を先頭に書き込む。
 pub fn append_adif_from_record(
     record: &crate::log_adapter::QsoRecord,
+    comment1: &str,
     path: &str,
 ) -> Result<(), String> {
     let file_exists = std::path::Path::new(path).exists();
@@ -153,6 +154,9 @@ pub fn append_adif_from_record(
     if !record.rst_rcvd.is_empty() {
         line.push_str(&adif_tag("RST_RCVD", &record.rst_rcvd));
     }
+    if !comment1.is_empty() {
+        line.push_str(&adif_tag("COMMENT", comment1));
+    }
     line.push_str("<EOR>\n");
 
     file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
@@ -168,8 +172,10 @@ pub fn csv_header() -> &'static str {
 /// QsoRecord(FreeDV等、UDP経由で受信した完結済みQSO情報)から
 /// 直接CSV行を追記する。RigStateのポーリングを必要としない点が
 /// append_log()との違い。
+/// comment1: COMMENT1欄に入れる文字列。尻切れ(73未確認)QSOの印付け等に使う。
 pub fn append_log_from_record(
     record: &crate::log_adapter::QsoRecord,
+    comment1: &str,
     path: &str,
 ) -> Result<(), String> {
     let line = format!(
@@ -181,7 +187,7 @@ pub fn append_log_from_record(
         record.peer_call,
         record.rst_sent,
         record.rst_rcvd,
-        "",
+        comment1,
         "",
     );
 

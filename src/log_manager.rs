@@ -51,20 +51,30 @@ impl LogManager {
         }
     }
 
-    /// ALL.TXTを再走査し、まだ書き込んでいない「完了済み(73確認済み)」の
-    /// QSOがあれば、その場でCSV/ADIFへ即時追記する。
-    /// GUIでの表示/未表示に関わらずデータを残すためのバックグラウンド処理。
+    /// ALL.TXTを再走査し、まだ書き込んでいないQSOがあれば、その場でCSV/ADIFへ
+    /// 即時追記する。GUIでの表示/未表示に関わらずデータを残すためのバックグラウンド処理。
     /// wsjtx_poller(数秒おきのタイマースレッド)から呼ばれる想定。
+    ///
+    /// Complete(73/RR73確認済み)だけでなく、Incomplete(尻切れ・応答が途中で止まった)
+    /// QSOも記録する。これは「後日その局から交信の有無を問い合わせられた際の裏付け」
+    /// として残しておきたい、というユーザーの意向による。COMMENT1に[73未確認]と
+    /// 付記することで、GUIやCSVを見ればひと目でComplete/Incompleteの区別がつく。
+    /// NoResponse(RSTレポートすら交換されていない)は、単発の空振り受信ノイズを
+    /// 記録で埋めないよう、対象外とする。
     pub fn catch_up_wsjtx(&self) {
         let records = crate::wsjtx_log::extract_all_qsos(&self.wsjtx_all_txt_path, &self.my_call);
 
         for record in records {
-            if record.status != Some(QsoStatus::Complete) {
-                // 73/RR73が来ていない(尻切れ・空振り)QSOは、まだ確定していないので書き込まない
-                continue;
-            }
+            let comment1 = match record.status {
+                Some(QsoStatus::Complete) => "",
+                Some(QsoStatus::Incomplete) => "[73未確認]",
+                Some(QsoStatus::NoResponse) | None => continue,
+            };
 
-            let key = format!("{}|{}", record.peer_call, record.time_on);
+            // 状態(Complete/Incomplete)ごとにキーを分けることで、
+            // 「最初は尻切れとして記録→後で73が来て完了」となった場合に
+            // 尻切れの記録を消さず、完了の記録を別途追加できるようにする。
+            let key = format!("{}|{}|{:?}", record.peer_call, record.time_on, record.status);
 
             {
                 let mut seen = self.written_wsjtx_keys.lock().unwrap();
@@ -74,9 +84,9 @@ impl LogManager {
                 seen.insert(key);
             }
 
-            println!("[LogManager] catch-up: new completed WSJT-X QSO {:?}", record);
+            println!("[LogManager] catch-up: new WSJT-X QSO ({:?}) {:?}", record.status, record);
 
-            match crate::hamlog::append_log_from_record(&record, &self.activity_log_path) {
+            match crate::hamlog::append_log_from_record(&record, comment1, &self.activity_log_path) {
                 Ok(()) => {
                     println!("[LogManager] wrote WSJT-X QSO to {}", self.activity_log_path);
                 }
@@ -89,7 +99,7 @@ impl LogManager {
                 "{}/ham_control_v02.adi",
                 std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
             );
-            match crate::hamlog::append_adif_from_record(&record, &adif_path) {
+            match crate::hamlog::append_adif_from_record(&record, comment1, &adif_path) {
                 Ok(()) => {
                     println!("[LogManager] wrote WSJT-X QSO to {}", adif_path);
                 }
@@ -143,7 +153,7 @@ impl LogManager {
         if let Some(record) = self.freedv.from_qso(qso) {
             println!("[LogManager] FreeDV QSORecord {:?}", record);
 
-            match crate::hamlog::append_log_from_record(&record, &self.activity_log_path) {
+            match crate::hamlog::append_log_from_record(&record, "", &self.activity_log_path) {
                 Ok(()) => {
                     println!("[LogManager] wrote FreeDV QSO to {}", self.activity_log_path);
                 }
@@ -156,7 +166,7 @@ impl LogManager {
                 "{}/ham_control_v02.adi",
                 std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
             );
-            match crate::hamlog::append_adif_from_record(&record, &adif_path) {
+            match crate::hamlog::append_adif_from_record(&record, "", &adif_path) {
                 Ok(()) => {
                     println!("[LogManager] wrote FreeDV QSO to {}", adif_path);
                 }
@@ -171,9 +181,11 @@ impl LogManager {
     }
 }
 
-/// 既存の活動ログCSVを読み込み、"CALL|TIME_ON"形式のキー集合を作る。
+/// 既存の活動ログCSVを読み込み、"CALL|TIME_ON|Status"形式のキー集合を作る。
 /// CSV列順は hamlog::csv_header() のとおり:
 /// TIME_ON,TIME_OFF,FREQ,MODE,CALL,RST_SENT,RST_RCVD,COMMENT1,COMMENT2
+/// COMMENT1に[73未確認]が入っていればIncomplete、それ以外はCompleteとして扱う
+/// (catch_up_wsjtx()のキー生成ロジックと一致させる必要がある)。
 fn load_existing_keys(path: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
 
@@ -189,7 +201,15 @@ fn load_existing_keys(path: &str) -> HashSet<String> {
         }
         let time_on = fields[0];
         let call = fields[4];
-        keys.insert(format!("{}|{}", call, time_on));
+        let comment1 = fields.get(7).copied().unwrap_or("");
+
+        let status = if comment1.contains("73未確認") {
+            Some(QsoStatus::Incomplete)
+        } else {
+            Some(QsoStatus::Complete)
+        };
+
+        keys.insert(format!("{}|{}|{:?}", call, time_on, status));
     }
 
     keys
