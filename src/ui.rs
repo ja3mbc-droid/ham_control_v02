@@ -61,6 +61,7 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
             qsl_via_input: String::new(),
             qsl_sent_input: String::new(),
             qsl_rcvd_input: String::new(),
+            log_source_selected: "WSJT-X".to_string(),
             })
         }),
     )
@@ -90,6 +91,7 @@ struct App {
     qsl_via_input: String,
     qsl_sent_input: String,
     qsl_rcvd_input: String,
+    log_source_selected: String,
 }
 
 impl eframe::App for App {
@@ -188,8 +190,14 @@ impl eframe::App for App {
             if !self.qso_mode.is_empty() {
                 ui.label(format!("QSO MODE: {}", self.qso_mode));
             }
+            ui.horizontal(|ui| {
+                ui.label("ログソース:");
+                ui.radio_value(&mut self.log_source_selected, "WSJT-X".to_string(), "WSJT-X");
+                ui.radio_value(&mut self.log_source_selected, "FreeDV".to_string(), "FreeDV");
+                ui.radio_value(&mut self.log_source_selected, "fldigi".to_string(), "fldigi");
+            });
             if ui.button("ALL.TXTから読込").clicked() {
-                if let Some(info) = self.log_manager.latest_qso() {
+                if let Some(info) = self.log_manager.latest_qso_by_source(&self.log_source_selected) {
                     match info.status {
                         Some(QsoStatus::Complete) => {
                             self.callsign_input = info.peer_call;

@@ -60,6 +60,19 @@ impl LogManager {
         None
     }
 
+    /// GUIのラジオボタン等から、特定のソース名を指定して取得する。
+    /// 名前は各AdapterのLogAdapter::name()と一致させる("FreeDV","WSJT-X","fldigi")。
+    pub fn latest_qso_by_source(&self, source: &str) -> Option<QsoRecord> {
+        if source == "FreeDV" {
+            return self.freedv.latest_qso();
+        }
+
+        self.adapters
+            .iter()
+            .find(|a| a.name() == source)
+            .and_then(|a| a.latest_qso())
+    }
+
     /// FreeDVのUDP受信(wsjtx_receiver)から呼ばれる。
     /// 唯一のFreeDvLogAdapter所有者としてQsoRecordへの変換と保存を担う。
     pub fn handle_freedv_qso(&self, qso: &QsoLogged) {
