@@ -110,6 +110,22 @@ impl LogManager {
         }
     }
 
+    /// GUIの「直近の交信一覧」表示用。ALL.TXTを走査し、直近limit件のQSOを
+    /// 新しい順(最新が先頭)で返す。NoResponse(空振り)は一覧に出さない。
+    /// latest_qso_by_source()と違い1件だけでなく複数件返すため、パイルアップ時に
+    /// 間の局が見えなくなる問題をGUI側からも確認できるようにする。
+    pub fn recent_wsjtx_qsos(&self, limit: usize) -> Vec<QsoRecord> {
+        let mut records = crate::wsjtx_log::extract_all_qsos(&self.wsjtx_all_txt_path, &self.my_call);
+
+        records.retain(|r| r.status != Some(QsoStatus::NoResponse) && r.status.is_some());
+
+        // extract_all_qsos()はファイル中で各セッションが開始した順(古い→新しい)で返すため、
+        // 新しい順に並べ替えてから直近limit件を取る
+        records.reverse();
+        records.truncate(limit);
+        records
+    }
+
     pub fn latest_qso(&self) -> Option<QsoRecord> {
         println!("[LogManager] latest_qso() called");
 

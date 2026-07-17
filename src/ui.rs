@@ -94,6 +94,41 @@ struct App {
     log_source_selected: String,
 }
 
+impl App {
+    /// QsoRecordの内容をCALL/RST等の入力欄へ反映する。
+    /// 「選択ソースから読込」ボタンと、直近の交信一覧のどちらからも呼ばれる共通処理。
+    fn apply_qso_record(&mut self, source_label: &str, info: crate::log_adapter::QsoRecord) {
+        match info.status {
+            Some(QsoStatus::Complete) => {
+                self.callsign_input = info.peer_call;
+                self.rst_sent_input = info.rst_sent;
+                self.rst_rcvd_input = info.rst_rcvd;
+                self.last_time_on = info.time_on;
+                self.last_time_off = info.time_off;
+                self.qso_mode = info.qso_mode.clone();
+                self.comment1_input.clear();
+                self.log_status = format!("{}: 完全成立のQSOを読込みました ({} MHz, {})", source_label, info.freq_mhz, info.qso_mode);
+            }
+            Some(QsoStatus::Incomplete) => {
+                self.callsign_input = info.peer_call;
+                self.rst_sent_input = info.rst_sent;
+                self.rst_rcvd_input = info.rst_rcvd;
+                self.last_time_on = info.time_on;
+                self.last_time_off = info.time_off;
+                self.qso_mode = info.qso_mode.clone();
+                self.comment1_input = "[73未確認]".to_string();
+                self.log_status = format!("{}: 尻切れQSOを読込みました(73未確認)", source_label);
+            }
+            Some(QsoStatus::NoResponse) => {
+                self.log_status = format!("{}: 空振り(応答なし)のため読込みません", source_label);
+            }
+            None => {
+                self.log_status = format!("{}: QSO状態情報なし", source_label);
+            }
+        }
+    }
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         ctx.request_repaint();
@@ -198,36 +233,38 @@ impl eframe::App for App {
             });
             if ui.button("選択ソースから読込").clicked() {
                 if let Some(info) = self.log_manager.latest_qso_by_source(&self.log_source_selected) {
-                    match info.status {
-                        Some(QsoStatus::Complete) => {
-                            self.callsign_input = info.peer_call;
-                            self.rst_sent_input = info.rst_sent;
-                            self.rst_rcvd_input = info.rst_rcvd;
-                            self.last_time_on = info.time_on;
-                            self.last_time_off = info.time_off;
-                            self.qso_mode = info.qso_mode.clone();
-                            self.log_status = format!("{}: 完全成立のQSOを読込みました ({} MHz, {})", self.log_source_selected, info.freq_mhz, info.qso_mode);
-                        }
-                        Some(QsoStatus::Incomplete) => {
-                            self.callsign_input = info.peer_call;
-                            self.rst_sent_input = info.rst_sent;
-                            self.rst_rcvd_input = info.rst_rcvd;
-                            self.last_time_on = info.time_on;
-                            self.last_time_off = info.time_off;
-                            self.qso_mode = info.qso_mode.clone();
-                            self.comment1_input = "[73未確認]".to_string();
-                            self.log_status = format!("{}: 尻切れQSOを読込みました(73未確認)", self.log_source_selected);
-                        }
-                        Some(QsoStatus::NoResponse) => {
-                            self.log_status = format!("{}: 空振り(応答なし)のため読込みません", self.log_source_selected);
-                        }
-                        None => {
-                            self.log_status = format!("{}: QSO状態情報なし", self.log_source_selected);
-                        }
-                    }
+                    let source = self.log_source_selected.clone();
+                    self.apply_qso_record(&source, info);
                 } else {
                     self.log_status = format!("{}: 該当データが見つかりません", self.log_source_selected);
                 }
+            }
+
+            if self.log_source_selected == "WSJT-X" {
+                ui.separator();
+                ui.label("直近の交信一覧(WSJT-X, クリックで読込):");
+                egui::ScrollArea::vertical()
+                    .max_height(160.0)
+                    .show(ui, |ui| {
+                        let recent = self.log_manager.recent_wsjtx_qsos(10);
+                        if recent.is_empty() {
+                            ui.label("(まだ交信データがありません)");
+                        }
+                        for record in recent {
+                            let status_label = match record.status {
+                                Some(QsoStatus::Complete) => "完了",
+                                Some(QsoStatus::Incomplete) => "尻切れ",
+                                _ => "?",
+                            };
+                            let row_label = format!(
+                                "{}  {}  {} MHz  {}  [{}]",
+                                record.time_on, record.peer_call, record.freq_mhz, record.qso_mode, status_label
+                            );
+                            if ui.button(row_label).clicked() {
+                                self.apply_qso_record("WSJT-X", record);
+                            }
+                        }
+                    });
             }
 
             ui.columns(2, |cols| {
