@@ -11,6 +11,7 @@ mod log_adapter;
 mod log_manager;
 mod wsjtx_receiver;
 mod wsjtx_poller;
+mod hamlog_auto;
 
 use std::sync::Arc;
 use log_manager::LogManager;

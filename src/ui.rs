@@ -62,6 +62,7 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
             qsl_sent_input: String::new(),
             qsl_rcvd_input: String::new(),
             log_source_selected: "WSJT-X".to_string(),
+            sent_to_hamlog: std::collections::HashSet::new(),
             })
         }),
     )
@@ -92,6 +93,10 @@ struct App {
     qsl_sent_input: String,
     qsl_rcvd_input: String,
     log_source_selected: String,
+    /// HAMLOGへ自動入力送信済みのQSOのキー集合(peer_call|time_on|status)。
+    /// 「直近の交信一覧」から一度送信したQSOを、再度リストに表示しないようにするため。
+    /// アプリ再起動でリセットされる(あえてディスクには永続化しない設計。詳細はREADME参照)。
+    sent_to_hamlog: std::collections::HashSet<String>,
 }
 
 impl App {
@@ -126,6 +131,13 @@ impl App {
                 self.log_status = format!("{}: QSO状態情報なし", source_label);
             }
         }
+    }
+
+    /// 「HAMLOGへ送信済み」判定・記録に使うキー。log_manager.rsの重複排除キーと
+    /// 同じ形式(peer_call|time_on|status)にしておくことで、将来キー生成ロジックを
+    /// 共通化しやすくしている。
+    fn wsjtx_record_key(record: &crate::log_adapter::QsoRecord) -> String {
+        format!("{}|{}|{:?}", record.peer_call, record.time_on, record.status)
     }
 }
 
@@ -242,13 +254,19 @@ impl eframe::App for App {
 
             if self.log_source_selected == "WSJT-X" {
                 ui.separator();
-                ui.label("直近の交信一覧(WSJT-X, クリックで読込):");
+                ui.label("直近の交信一覧(WSJT-X, クリックでHAMLOGへ自動入力):");
                 egui::ScrollArea::vertical()
                     .max_height(160.0)
                     .show(ui, |ui| {
-                        let recent = self.log_manager.recent_wsjtx_qsos(10);
+                        let recent: Vec<_> = self
+                            .log_manager
+                            .recent_wsjtx_qsos(10)
+                            .into_iter()
+                            .filter(|r| !self.sent_to_hamlog.contains(&Self::wsjtx_record_key(r)))
+                            .collect();
+
                         if recent.is_empty() {
-                            ui.label("(まだ交信データがありません)");
+                            ui.label("(表示できる未送信の交信データがありません)");
                         }
                         for record in recent {
                             let status_label = match record.status {
@@ -261,7 +279,27 @@ impl eframe::App for App {
                                 record.time_on, record.peer_call, record.freq_mhz, record.qso_mode, status_label
                             );
                             if ui.button(row_label).clicked() {
-                                self.apply_qso_record("WSJT-X", record);
+                                let key = Self::wsjtx_record_key(&record);
+                                let comment1_for_hamlog = if record.status == Some(QsoStatus::Incomplete) {
+                                    "[73未確認]".to_string()
+                                } else {
+                                    String::new()
+                                };
+
+                                match crate::hamlog_auto::send_qso_to_hamlog(&record, &comment1_for_hamlog) {
+                                    Ok(()) => {
+                                        self.sent_to_hamlog.insert(key);
+                                        let peer_call = record.peer_call.clone();
+                                        self.apply_qso_record("WSJT-X", record);
+                                        self.log_status = format!(
+                                            "{}: HAMLOGへ自動入力しました(Save欄で停止中、内容確認のうえEnterで保存してください)",
+                                            peer_call
+                                        );
+                                    }
+                                    Err(e) => {
+                                        self.log_status = format!("HAMLOGへの自動入力に失敗しました: {}", e);
+                                    }
+                                }
                             }
                         }
                     });
