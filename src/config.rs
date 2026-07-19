@@ -6,6 +6,7 @@ pub struct Config {
     pub activity_log_path: String,
     pub wsjtx_all_txt_path: String,
     pub fldigi_logbook_path: String,
+    pub sent_to_hamlog_path: String,
 }
 
 impl Default for Config {
@@ -16,6 +17,7 @@ impl Default for Config {
             activity_log_path: format!("{}/ham_control_v02_activity.csv", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
             wsjtx_all_txt_path: format!("{}/.local/share/WSJT-X/ALL.TXT", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
             fldigi_logbook_path: format!("{}/.fldigi/logs/logbook.adif", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+            sent_to_hamlog_path: format!("{}/ham_control_v02_sent_to_hamlog.txt", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
         }
     }
 }
@@ -43,6 +45,10 @@ pub fn load() -> Config {
 
     if let Ok(path) = env::var("HAM_FLDIGI_LOGBOOK_PATH") {
         cfg.fldigi_logbook_path = path;
+    }
+
+    if let Ok(path) = env::var("HAM_SENT_TO_HAMLOG_PATH") {
+        cfg.sent_to_hamlog_path = path;
     }
 
     cfg

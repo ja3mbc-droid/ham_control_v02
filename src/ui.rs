@@ -36,6 +36,7 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
             cc.egui_ctx.set_fonts(fonts);
 
             let cfg = config::load();
+            let sent_to_hamlog = App::load_sent_to_hamlog(&cfg.sent_to_hamlog_path);
 
             Box::new(App {
             state,
@@ -62,7 +63,7 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
             qsl_sent_input: String::new(),
             qsl_rcvd_input: String::new(),
             log_source_selected: "WSJT-X".to_string(),
-            sent_to_hamlog: std::collections::HashSet::new(),
+            sent_to_hamlog,
             })
         }),
     )
@@ -93,9 +94,11 @@ struct App {
     qsl_sent_input: String,
     qsl_rcvd_input: String,
     log_source_selected: String,
-    /// HAMLOGへ自動入力送信済みのQSOのキー集合(peer_call|time_on|status)。
-    /// 「直近の交信一覧」から一度送信したQSOを、再度リストに表示しないようにするため。
-    /// アプリ再起動でリセットされる(あえてディスクには永続化しない設計。詳細はREADME参照)。
+    /// HAMLOGへの手入力が完了した(運用者が「済」ボタンを押した)QSOのキー集合
+    /// (peer_call|time_on|status)。「直近の交信一覧」から済みQSOを非表示にするため。
+    /// `cfg.sent_to_hamlog_path`のテキストファイルに1行1キーで永続化しており、
+    /// 起動時に読み込むためアプリ再起動をまたいでも消えない
+    /// (xdotool自動入力は断念済み。詳細はdocs/claude/007,008参照)。
     sent_to_hamlog: std::collections::HashSet<String>,
 }
 
@@ -138,6 +141,37 @@ impl App {
     /// 共通化しやすくしている。
     fn wsjtx_record_key(record: &crate::log_adapter::QsoRecord) -> String {
         format!("{}|{}|{:?}", record.peer_call, record.time_on, record.status)
+    }
+
+    /// sent_to_hamlogの永続化ファイル(1行1キー)を読み込む。
+    /// ファイルが無い場合(初回起動時)は空集合を返す。
+    fn load_sent_to_hamlog(path: &str) -> std::collections::HashSet<String> {
+        match std::fs::read_to_string(path) {
+            Ok(content) => content
+                .lines()
+                .map(|line| line.trim().to_string())
+                .filter(|line| !line.is_empty())
+                .collect(),
+            Err(_) => std::collections::HashSet::new(),
+        }
+    }
+
+    /// 「済」マークを1件追加し、永続化ファイルにも追記する。
+    fn mark_sent_to_hamlog(&mut self, key: String) {
+        if self.sent_to_hamlog.contains(&key) {
+            return;
+        }
+        use std::io::Write;
+        let result = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.cfg.sent_to_hamlog_path)
+            .and_then(|mut f| writeln!(f, "{}", key));
+
+        if let Err(e) = result {
+            self.log_status = format!("済みマークの保存に失敗しました({}): {}", self.cfg.sent_to_hamlog_path, e);
+        }
+        self.sent_to_hamlog.insert(key);
     }
 }
 
@@ -254,7 +288,7 @@ impl eframe::App for App {
 
             if self.log_source_selected == "WSJT-X" {
                 ui.separator();
-                ui.label("直近の交信一覧(WSJT-X, クリックでHAMLOGへ自動入力):");
+                ui.label("直近の交信一覧(WSJT-X, クリックで入力欄へ読込→HAMLOGへ手入力):");
                 egui::ScrollArea::vertical()
                     .max_height(160.0)
                     .show(ui, |ui| {
@@ -266,7 +300,7 @@ impl eframe::App for App {
                             .collect();
 
                         if recent.is_empty() {
-                            ui.label("(表示できる未送信の交信データがありません)");
+                            ui.label("(表示できる未処理の交信データがありません)");
                         }
                         for record in recent {
                             let status_label = match record.status {
@@ -278,29 +312,26 @@ impl eframe::App for App {
                                 "{}  {}  {} MHz  {}  [{}]",
                                 record.time_on, record.peer_call, record.freq_mhz, record.qso_mode, status_label
                             );
-                            if ui.button(row_label).clicked() {
-                                let key = Self::wsjtx_record_key(&record);
-                                let comment1_for_hamlog = if record.status == Some(QsoStatus::Incomplete) {
-                                    "[73未確認]".to_string()
-                                } else {
-                                    String::new()
-                                };
+                            let key = Self::wsjtx_record_key(&record);
 
-                                match crate::hamlog_auto::send_qso_to_hamlog(&record, &comment1_for_hamlog) {
-                                    Ok(()) => {
-                                        self.sent_to_hamlog.insert(key);
-                                        let peer_call = record.peer_call.clone();
-                                        self.apply_qso_record("WSJT-X", record);
-                                        self.log_status = format!(
-                                            "{}: HAMLOGへ自動入力しました(Save欄で停止中、内容確認のうえEnterで保存してください)",
-                                            peer_call
-                                        );
-                                    }
-                                    Err(e) => {
-                                        self.log_status = format!("HAMLOGへの自動入力に失敗しました: {}", e);
-                                    }
+                            ui.horizontal(|ui| {
+                                if ui.button(&row_label).clicked() {
+                                    let peer_call = record.peer_call.clone();
+                                    self.apply_qso_record("WSJT-X", record.clone());
+                                    self.log_status = format!(
+                                        "{}: 入力欄へ読み込みました。内容を確認してHAMLOGへ手入力してください",
+                                        peer_call
+                                    );
                                 }
-                            }
+                                if ui
+                                    .button("済にする")
+                                    .on_hover_text("HAMLOGへの手入力が完了したら押してください。一覧から消えます")
+                                    .clicked()
+                                {
+                                    self.mark_sent_to_hamlog(key.clone());
+                                    self.log_status = format!("{}: 済みにしました", record.peer_call);
+                                }
+                            });
                         }
                     });
             }
