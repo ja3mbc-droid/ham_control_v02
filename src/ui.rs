@@ -138,8 +138,10 @@ impl App {
 
     /// 「HAMLOGへ送信済み」判定・記録に使うキー。log_manager.rsの重複排除キーと
     /// 同じ形式(peer_call|time_on|status)にしておくことで、将来キー生成ロジックを
-    /// 共通化しやすくしている。
-    fn wsjtx_record_key(record: &crate::log_adapter::QsoRecord) -> String {
+    /// 共通化しやすくしている。WSJT-X用に最初作られた形式をそのまま維持し、
+    /// FreeDV/fldigiにも共用する(ソース名を含めないのは、既にディスクに永続化済みの
+    /// WSJT-Xの済みマークと形式を変えないため)。
+    fn record_key(record: &crate::log_adapter::QsoRecord) -> String {
         format!("{}|{}|{:?}", record.peer_call, record.time_on, record.status)
     }
 
@@ -286,17 +288,22 @@ impl eframe::App for App {
                 }
             }
 
-            if self.log_source_selected == "WSJT-X" {
+            {
+                let source = self.log_source_selected.clone();
                 ui.separator();
-                ui.label("直近の交信一覧(WSJT-X, クリックで入力欄へ読込→HAMLOGへ手入力):");
+                ui.label(format!("直近の交信一覧({}, クリックで入力欄へ読込→HAMLOGへ手入力):", source));
                 egui::ScrollArea::vertical()
                     .max_height(160.0)
                     .show(ui, |ui| {
-                        let recent: Vec<_> = self
-                            .log_manager
-                            .recent_wsjtx_qsos(10)
+                        let raw: Vec<_> = match source.as_str() {
+                            "WSJT-X" => self.log_manager.recent_wsjtx_qsos(10),
+                            "FreeDV" => self.log_manager.recent_freedv_qsos(10),
+                            "fldigi" => self.log_manager.recent_fldigi_qsos(10),
+                            _ => Vec::new(),
+                        };
+                        let recent: Vec<_> = raw
                             .into_iter()
-                            .filter(|r| !self.sent_to_hamlog.contains(&Self::wsjtx_record_key(r)))
+                            .filter(|r| !self.sent_to_hamlog.contains(&Self::record_key(r)))
                             .collect();
 
                         if recent.is_empty() {
@@ -312,12 +319,12 @@ impl eframe::App for App {
                                 "{}  {}  {} MHz  {}  [{}]",
                                 record.time_on, record.peer_call, record.freq_mhz, record.qso_mode, status_label
                             );
-                            let key = Self::wsjtx_record_key(&record);
+                            let key = Self::record_key(&record);
 
                             ui.horizontal(|ui| {
                                 if ui.button(&row_label).clicked() {
                                     let peer_call = record.peer_call.clone();
-                                    self.apply_qso_record("WSJT-X", record.clone());
+                                    self.apply_qso_record(&source, record.clone());
                                     self.log_status = format!(
                                         "{}: 入力欄へ読み込みました。内容を確認してHAMLOGへ手入力してください",
                                         peer_call

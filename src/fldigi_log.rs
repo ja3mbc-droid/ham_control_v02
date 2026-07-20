@@ -61,33 +61,49 @@ fn parse_adif_record(record: &str) -> std::collections::HashMap<String, String> 
     fields
 }
 
-/// logbook.adif から最新のQSO(最後のレコード)を読み取る。
-pub fn find_latest_qso(adif_path: &str) -> Option<QsoRecord> {
-    let content = fs::read_to_string(adif_path).ok()?;
+/// logbook.adif から全QSOをファイル中の記録順(古い→新しい)で読み取る。
+/// find_latest_qso()と、GUIの一覧表示用recent_fldigi_qsos()の両方から使う共通処理。
+pub fn find_all_qsos(adif_path: &str) -> Vec<QsoRecord> {
+    let content = match fs::read_to_string(adif_path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
 
     // ヘッダー(<EOH>まで)を除いた本文を、<EOR>区切りでレコードに分割
-    let body = content.split("<EOH>").nth(1)?;
+    let body = match content.split("<EOH>").nth(1) {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
     let records: Vec<&str> = body.split("<EOR>").filter(|r| !r.trim().is_empty()).collect();
 
-    let last_record = records.last()?;
-    let fields = parse_adif_record(last_record);
+    records
+        .iter()
+        .map(|record| {
+            let fields = parse_adif_record(record);
+            QsoRecord {
+                peer_call: fields.get("CALL").cloned().unwrap_or_default(),
+                status: Some(QsoStatus::Complete),
+                time_on: fields.get("TIME_ON").cloned().unwrap_or_default(),
+                freq_mhz: fields.get("FREQ").cloned().unwrap_or_default(),
+                qso_mode: fields.get("MODE").cloned().unwrap_or_default(),
+                rst_sent: fields.get("RST_SENT").cloned().unwrap_or_default(),
+                rst_rcvd: fields.get("RST_RCVD").cloned().unwrap_or_default(),
+                time_off: fields.get("TIME_OFF").cloned().unwrap_or_default(),
+            }
+        })
+        .filter(|r| !r.peer_call.is_empty())
+        .collect()
+}
+
+/// logbook.adif から最新のQSO(最後のレコード)を読み取る。
+pub fn find_latest_qso(adif_path: &str) -> Option<QsoRecord> {
+    let records = find_all_qsos(adif_path);
+    let last = records.last()?.clone();
 
     println!(
         "[Fldigi] latest CALL={:?} MODE={:?} FREQ={:?}",
-        fields.get("CALL"),
-        fields.get("MODE"),
-        fields.get("FREQ")
+        last.peer_call, last.qso_mode, last.freq_mhz
     );
 
-    Some(QsoRecord {
-        peer_call: fields.get("CALL").cloned().unwrap_or_default(),
-        status: Some(QsoStatus::Complete),
-        
-        time_on: fields.get("TIME_ON").cloned().unwrap_or_default(),
-        freq_mhz: fields.get("FREQ").cloned().unwrap_or_default(),
-        qso_mode: fields.get("MODE").cloned().unwrap_or_default(),
-        rst_sent: fields.get("RST_SENT").cloned().unwrap_or_default(),
-        rst_rcvd: fields.get("RST_RCVD").cloned().unwrap_or_default(),
-        time_off: fields.get("TIME_OFF").cloned().unwrap_or_default(),
-    })
+    Some(last)
 }

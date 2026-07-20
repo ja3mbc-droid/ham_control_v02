@@ -11,6 +11,7 @@ pub struct LogManager {
     freedv: FreeDvLogAdapter,
     activity_log_path: String,
     wsjtx_all_txt_path: String,
+    fldigi_logbook_path: String,
     my_call: String,
     /// 既にCSV/ADIFへ書き込み済みのWSJT-X QSOを覚えておくためのキー集合
     /// (peer_call + time_on)。パイルアップ時、ALL.TXTを繰り返し走査しても
@@ -31,7 +32,7 @@ impl LogManager {
         );
 
         let fldigi = FldigiLogAdapter::new(
-            fldigi_logbook_path,
+            fldigi_logbook_path.clone(),
         );
 
         // 起動時に既存の活動ログCSVを読み込み、既に記録済みのQSOキーを
@@ -46,6 +47,7 @@ impl LogManager {
             freedv: FreeDvLogAdapter::new(),
             activity_log_path,
             wsjtx_all_txt_path,
+            fldigi_logbook_path,
             my_call,
             written_wsjtx_keys,
         }
@@ -124,6 +126,22 @@ impl LogManager {
         records.reverse();
         records.truncate(limit);
         records
+    }
+
+    /// GUIの「直近の交信一覧」表示用(fldigi版)。recent_wsjtx_qsos()と同じ形。
+    /// logbook.adifは記録順(古い→新しい)で並んでいるため、同様に反転してから
+    /// 直近limit件を返す。
+    pub fn recent_fldigi_qsos(&self, limit: usize) -> Vec<QsoRecord> {
+        let mut records = crate::fldigi_log::find_all_qsos(&self.fldigi_logbook_path);
+        records.reverse();
+        records.truncate(limit);
+        records
+    }
+
+    /// GUIの「直近の交信一覧」表示用(FreeDV版)。FreeDvLogAdapter側で
+    /// 既に新しい順・limit件に整形されているため、そのまま委譲する。
+    pub fn recent_freedv_qsos(&self, limit: usize) -> Vec<QsoRecord> {
+        self.freedv.recent(limit)
     }
 
     pub fn latest_qso(&self) -> Option<QsoRecord> {

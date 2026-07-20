@@ -2,7 +2,10 @@ use std::sync::Mutex;
 use crate::log_adapter::{LogAdapter, QsoRecord, QsoStatus};
 
 pub struct FreeDvLogAdapter {
-    last_qso: Mutex<Option<QsoRecord>>,
+    /// 受信したQSOを古い順に積んでいく履歴。UDPプッシュはこのアプリの
+    /// プロセス内でしか観測できないため、WSJT-X(ALL.TXT)やfldigi(logbook.adif)
+    /// と違いディスク上の"正"のソースが無く、アプリ再起動で履歴はリセットされる。
+    history: Mutex<Vec<QsoRecord>>,
 }
 
 
@@ -11,7 +14,7 @@ impl FreeDvLogAdapter {
     pub fn new() -> Self {
         println!("[FreeDV] adapter ready");
         Self {
-            last_qso: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
         }
     }
 
@@ -34,13 +37,26 @@ impl FreeDvLogAdapter {
         })
     }
 
-    /// UDP受信でQSOが確定するたびにLogManagerから呼ばれ、
-    /// 最新の1件として保持する。GUI等からのpollはlatest_qso()経由で
-    /// この値を読む。
+    /// UDP受信でQSOが確定するたびにLogManagerから呼ばれ、履歴の末尾に積む。
+    /// GUI等からのpollはlatest_qso()/recent()経由でこの履歴を読む。
     pub fn store_latest(&self, record: QsoRecord) {
-        if let Ok(mut guard) = self.last_qso.lock() {
-            *guard = Some(record);
+        if let Ok(mut guard) = self.history.lock() {
+            guard.push(record);
         }
+    }
+
+    /// GUIの「直近の交信一覧」表示用。新しい順(最新が先頭)で直近limit件を返す。
+    /// recent_wsjtx_qsos()/find_all_qsos()と揃えた形にすることで、ui.rs側が
+    /// ログソースによらず同じ表示ロジックを使い回せるようにする。
+    pub fn recent(&self, limit: usize) -> Vec<QsoRecord> {
+        let guard = match self.history.lock() {
+            Ok(g) => g,
+            Err(_) => return Vec::new(),
+        };
+        let mut records: Vec<QsoRecord> = guard.clone();
+        records.reverse();
+        records.truncate(limit);
+        records
     }
 }
 
@@ -48,7 +64,7 @@ impl FreeDvLogAdapter {
 impl LogAdapter for FreeDvLogAdapter {
 
     fn latest_qso(&self) -> Option<QsoRecord> {
-        self.last_qso.lock().ok()?.clone()
+        self.history.lock().ok()?.last().cloned()
     }
 
 
