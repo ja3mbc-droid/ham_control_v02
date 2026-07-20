@@ -278,6 +278,7 @@ impl eframe::App for App {
                 ui.radio_value(&mut self.log_source_selected, "WSJT-X".to_string(), "WSJT-X");
                 ui.radio_value(&mut self.log_source_selected, "FreeDV".to_string(), "FreeDV");
                 ui.radio_value(&mut self.log_source_selected, "fldigi".to_string(), "fldigi");
+                ui.radio_value(&mut self.log_source_selected, "MMSSTV".to_string(), "MMSSTV");
             });
             if ui.button("選択ソースから読込").clicked() {
                 if let Some(info) = self.log_manager.latest_qso_by_source(&self.log_source_selected) {
@@ -299,6 +300,7 @@ impl eframe::App for App {
                             "WSJT-X" => self.log_manager.recent_wsjtx_qsos(10),
                             "FreeDV" => self.log_manager.recent_freedv_qsos(10),
                             "fldigi" => self.log_manager.recent_fldigi_qsos(10),
+                            "MMSSTV" => self.log_manager.recent_mmsstv_qsos(10),
                             _ => Vec::new(),
                         };
                         let recent: Vec<_> = raw

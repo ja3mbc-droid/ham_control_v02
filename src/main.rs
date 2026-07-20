@@ -12,6 +12,7 @@ mod log_manager;
 mod wsjtx_receiver;
 mod wsjtx_poller;
 mod hamlog_auto;
+mod mmsstv_log;
 
 use std::sync::Arc;
 use log_manager::LogManager;
@@ -24,6 +25,7 @@ fn main() -> eframe::Result<()> {
         "JA3MBC".to_string(),
         cfg.activity_log_path.clone(),
         cfg.fldigi_logbook_path.clone(),
+        cfg.mmsstv_mdt_path.clone(),
     ));
 
     wsjtx_receiver::start(log_manager.clone());

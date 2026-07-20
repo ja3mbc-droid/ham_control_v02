@@ -2,6 +2,7 @@ use crate::log_adapter::{LogAdapter, QsoRecord, QsoStatus};
 use crate::wsjtx_log::WsjtxLogAdapter;
 use crate::fldigi_log::FldigiLogAdapter;
 use crate::freedv_log::FreeDvLogAdapter;
+use crate::mmsstv_log::MmsstvLogAdapter;
 use crate::wsjtx_protocol::QsoLogged;
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -12,6 +13,7 @@ pub struct LogManager {
     activity_log_path: String,
     wsjtx_all_txt_path: String,
     fldigi_logbook_path: String,
+    mmsstv_mdt_path: String,
     my_call: String,
     /// 既にCSV/ADIFへ書き込み済みのWSJT-X QSOを覚えておくためのキー集合
     /// (peer_call + time_on)。パイルアップ時、ALL.TXTを繰り返し走査しても
@@ -25,6 +27,7 @@ impl LogManager {
         my_call: String,
         activity_log_path: String,
         fldigi_logbook_path: String,
+        mmsstv_mdt_path: String,
     ) -> Self {
         let wsjtx = WsjtxLogAdapter::new(
             wsjtx_all_txt_path.clone(),
@@ -35,6 +38,10 @@ impl LogManager {
             fldigi_logbook_path.clone(),
         );
 
+        let mmsstv = MmsstvLogAdapter::new(
+            mmsstv_mdt_path.clone(),
+        );
+
         // 起動時に既存の活動ログCSVを読み込み、既に記録済みのQSOキーを
         // 事前に把握しておく(過去分の再書き込みを防ぐ)。
         let written_wsjtx_keys = Mutex::new(load_existing_keys(&activity_log_path));
@@ -43,11 +50,13 @@ impl LogManager {
             adapters: vec![
                 Box::new(wsjtx),
                 Box::new(fldigi),
+                Box::new(mmsstv),
             ],
             freedv: FreeDvLogAdapter::new(),
             activity_log_path,
             wsjtx_all_txt_path,
             fldigi_logbook_path,
+            mmsstv_mdt_path,
             my_call,
             written_wsjtx_keys,
         }
@@ -133,6 +142,15 @@ impl LogManager {
     /// 直近limit件を返す。
     pub fn recent_fldigi_qsos(&self, limit: usize) -> Vec<QsoRecord> {
         let mut records = crate::fldigi_log::find_all_qsos(&self.fldigi_logbook_path);
+        records.reverse();
+        records.truncate(limit);
+        records
+    }
+
+    /// GUIの「直近の交信一覧」表示用(MMSSTV版)。.MDTは記録順(古い→新しい)で
+    /// 並んでいるため、fldigi版と同様に反転してから直近limit件を返す。
+    pub fn recent_mmsstv_qsos(&self, limit: usize) -> Vec<QsoRecord> {
+        let mut records = crate::mmsstv_log::find_all_qsos(&self.mmsstv_mdt_path);
         records.reverse();
         records.truncate(limit);
         records
