@@ -40,6 +40,21 @@ fn parse_datetime(field: &str) -> String {
     )
 }
 
+/// ALL.TXTの各行は
+/// "<timestamp> <dial_freq_mhz> <Rx/Tx> <mode> <SNR> <DT> <audio_offset_hz> <msg...>"
+/// の並び(fields[1]=ダイヤル周波数MHz、fields[6]=音声トーンオフセットHz)。
+/// 実際にオンエアしている周波数はダイヤル周波数+音声オフセット(F+X)であり、
+/// ダイヤル周波数だけではズレる。両者を合算してMHz単位の文字列を返す。
+/// パース不能な場合はダイヤル周波数の文字列をそのまま返す(壊さない)。
+fn compute_actual_freq_mhz(dial_freq_mhz: &str, offset_hz: &str) -> String {
+    let dial: f64 = match dial_freq_mhz.parse() {
+        Ok(v) => v,
+        Err(_) => return dial_freq_mhz.to_string(),
+    };
+    let offset: f64 = offset_hz.parse().unwrap_or(0.0);
+    format!("{:.6}", dial + offset / 1_000_000.0)
+}
+
 fn extract_report(msg: &str) -> Option<String> {
     let body = msg.strip_prefix('R').unwrap_or(msg);
     if (body.starts_with('-') || body.starts_with('+'))
@@ -103,9 +118,13 @@ fn read_latest_qso(all_txt_path: &str, my_call: &str) -> Option<QsoRecord> {
 
     let freq_mhz = ordered
         .first()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap_or("----")
-        .to_string();
+        .map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let dial = f.get(1).copied().unwrap_or("----");
+            let offset = f.get(6).copied().unwrap_or("0");
+            compute_actual_freq_mhz(dial, offset)
+        })
+        .unwrap_or_else(|| "----".to_string());
 
     // 無線機の変調方式(USB等)とは別の、通信プロトコル(FT8/FT4等)
     let qso_mode = ordered
@@ -232,7 +251,9 @@ pub fn extract_all_qsos(all_txt_path: &str, my_call: &str) -> Vec<QsoRecord> {
             sender.to_string()
         };
 
-        let freq_mhz = fields.get(1).unwrap_or(&"----").to_string();
+        let dial_freq = fields.get(1).copied().unwrap_or("----");
+        let offset_hz = fields.get(6).copied().unwrap_or("0");
+        let freq_mhz = compute_actual_freq_mhz(dial_freq, offset_hz);
         let qso_mode = fields.get(3).unwrap_or(&"----").to_string();
         let dir = fields[2];
         let msg = fields[9];

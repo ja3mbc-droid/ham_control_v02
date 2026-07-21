@@ -2,11 +2,86 @@ use crate::log_adapter::{QsoRecord, QsoStatus};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-/// record.time_on("YYYY-MM-DD HH:MM:SS"形式、wsjtx_log.rs/fldigi_log.rs/
+/// 相手コールサインが日本の局かどうかを判定する。
+/// 対象: JA〜JS(2文字目がA〜S)の一般的な日本の割当プレフィックス、
+/// および7J/7K/7L/7M/7N・8J/8K/8L/8M/8N(記念局等に使われる数字接頭)。
+/// JT〜JV(モンゴル)・JW〜JX(ノルウェー)・JY(ヨルダン)・JZ(インドネシア)は
+/// 日本ではないため対象外(2文字目をA〜Sに限定することで除外している)。
+/// 完全な正確性は保証しないが、実運用上の大半のケースをカバーする簡易判定。
+fn is_japanese_callsign(call: &str) -> bool {
+    let call = call.trim().to_uppercase();
+    let chars: Vec<char> = call.chars().collect();
+    if chars.len() < 2 {
+        return false;
+    }
+    if chars[0] == 'J' && ('A'..='S').contains(&chars[1]) {
+        return true;
+    }
+    if chars[0].is_ascii_digit() && ('J'..='N').contains(&chars[1]) {
+        return true;
+    }
+    false
+}
+
+fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+fn days_in_month(year: i32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => if is_leap_year(year) { 29 } else { 28 },
+        _ => 30,
+    }
+}
+
+/// UTC日時(年,月,日,時,分)にadd_hours時間を加算し、日付の繰り上がり/繰り下がりを
+/// 考慮した現地時刻を計算する(JST変換=+9のために使用)。
+fn add_hours(year: i32, month: u32, day: u32, hour: u32, minute: u32, add_hours: i32) -> (i32, u32, u32, u32, u32) {
+    let mut total_minutes = hour as i64 * 60 + minute as i64 + add_hours as i64 * 60;
+    let mut day = day as i64;
+    let mut month = month as i64;
+    let mut year = year as i64;
+
+    while total_minutes >= 24 * 60 {
+        total_minutes -= 24 * 60;
+        day += 1;
+        let dim = days_in_month(year as i32, month as u32) as i64;
+        if day > dim {
+            day = 1;
+            month += 1;
+            if month > 12 {
+                month = 1;
+                year += 1;
+            }
+        }
+    }
+    while total_minutes < 0 {
+        total_minutes += 24 * 60;
+        day -= 1;
+        if day < 1 {
+            month -= 1;
+            if month < 1 {
+                month = 12;
+                year -= 1;
+            }
+            day = days_in_month(year as i32, month as u32) as i64;
+        }
+    }
+
+    let hour = (total_minutes / 60) as u32;
+    let minute = (total_minutes % 60) as u32;
+    (year as i32, month as u32, day as u32, hour, minute)
+}
+
+/// record.time_on("YYYY-MM-DD HH:MM:SS"形式、UTC基準、wsjtx_log.rs/fldigi_log.rs/
 /// freedv_log.rs/mmsstv_log.rsで共通化済み)を、HAMLOGのDate欄("26/07/21"形式)・
-/// Time欄("13:10U"形式、Uは末尾に付けてUTCであることを示す)に変換する。
-/// パースできない場合はNoneを返し、呼び出し側は空欄のまま送る(HAMLOG既定値に任せる)。
-fn time_on_to_hamlog_date_time(time_on: &str) -> Option<(String, String)> {
+/// Time欄("13:10U"/"22:10J"形式、末尾J/Uでタイムゾーンを示す)に変換する。
+/// 相手が日本の局(is_japanese_callsignでtrue)ならJST(+9h)に変換してJを付け、
+/// それ以外はUTCのままUを付ける。パースできない場合はNoneを返し、
+/// 呼び出し側は空欄のまま送る(HAMLOG既定値に任せる)。
+fn time_on_to_hamlog_date_time(time_on: &str, peer_call: &str) -> Option<(String, String)> {
     let mut parts = time_on.splitn(2, ' ');
     let date_part = parts.next()?;
     let time_part = parts.next()?;
@@ -15,22 +90,28 @@ fn time_on_to_hamlog_date_time(time_on: &str) -> Option<(String, String)> {
     if date_fields.len() != 3 {
         return None;
     }
-    let year = date_fields[0];
-    let month = date_fields[1];
-    let day = date_fields[2];
-    let yy = if year.len() == 4 { &year[2..4] } else { year };
+    let year: i32 = date_fields[0].parse().ok()?;
+    let month: u32 = date_fields[1].parse().ok()?;
+    let day: u32 = date_fields[2].parse().ok()?;
 
     let time_fields: Vec<&str> = time_part.split(':').collect();
     if time_fields.len() < 2 {
         return None;
     }
-    let hh = time_fields[0];
-    let mm = time_fields[1];
+    let hour: u32 = time_fields[0].parse().ok()?;
+    let minute: u32 = time_fields[1].parse().ok()?;
 
-    let hamlog_date = format!("{}/{}/{}", yy, month, day);
-    // record.time_onは全ソース共通でUTC基準(ham_control_v02のGUI表示もUT表記)。
-    // HAMLOGのTime欄は末尾のJ/Uでタイムゾーンを示す仕様のため、Uを付ける。
-    let hamlog_time = format!("{}:{}U", hh, mm);
+    let (y, mo, d, h, mi) = if is_japanese_callsign(peer_call) {
+        let (y, mo, d, h, mi) = add_hours(year, month, day, hour, minute, 9);
+        (y, mo, d, h, mi)
+    } else {
+        (year, month, day, hour, minute)
+    };
+    let tz_suffix = if is_japanese_callsign(peer_call) { "J" } else { "U" };
+
+    let yy = y % 100;
+    let hamlog_date = format!("{:02}/{:02}/{:02}", yy, mo, d);
+    let hamlog_time = format!("{:02}:{:02}{}", h, mi, tz_suffix);
     Some((hamlog_date, hamlog_time))
 }
 
@@ -47,7 +128,7 @@ fn qso_record_to_16lines(record: &QsoRecord) -> String {
         _ => "",
     };
 
-    let (date_str, time_str) = time_on_to_hamlog_date_time(&record.time_on)
+    let (date_str, time_str) = time_on_to_hamlog_date_time(&record.time_on, &record.peer_call)
         .unwrap_or_default();
 
     let lines: [&str; 16] = [

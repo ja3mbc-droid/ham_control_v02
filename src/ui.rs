@@ -309,7 +309,28 @@ impl eframe::App for App {
                             .collect();
 
                         if recent.is_empty() {
-                            ui.label("(表示できる未処理の交信データがありません)");
+                            match source.as_str() {
+                                "FreeDV" => {
+                                    ui.label("(表示できる未処理の交信データがありません)");
+                                    ui.label("※FreeDVはこのアプリ起動中に受信したQSOのみ一覧に表示されます。アプリ起動前のQSOや、アプリ再起動後は表示できません(非永続)。");
+                                }
+                                "MMSSTV" => {
+                                    let exists = std::path::Path::new(&self.cfg.mmsstv_mdt_path).exists();
+                                    if exists {
+                                        ui.label("(表示できる未処理の交信データがありません)");
+                                        ui.label(format!("※.MDTファイル({})は存在しますが、レコードを読み取れませんでした。ファイルが空、またはコールサインが空欄のレコードのみの可能性があります。", self.cfg.mmsstv_mdt_path));
+                                    } else {
+                                        ui.colored_label(
+                                            egui::Color32::YELLOW,
+                                            format!("※.MDTファイルが見つかりません: {}", self.cfg.mmsstv_mdt_path),
+                                        );
+                                        ui.label("HAM_MMSSTV_MDT_PATH環境変数、またはMMSSTVの保存先を確認してください。");
+                                    }
+                                }
+                                _ => {
+                                    ui.label("(表示できる未処理の交信データがありません)");
+                                }
+                            }
                         }
                         for record in recent {
                             let status_label = match record.status {
