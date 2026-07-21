@@ -12,7 +12,7 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([700.0, 850.0]),
+            .with_inner_size([900.0, 850.0]),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -344,7 +344,7 @@ impl eframe::App for App {
                             );
                             let key = Self::record_key(&record);
 
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 if ui.button(&row_label).clicked() {
                                     let peer_call = record.peer_call.clone();
                                     self.apply_qso_record(&source, record.clone());
