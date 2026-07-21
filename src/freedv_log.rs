@@ -1,6 +1,22 @@
 use std::sync::Mutex;
 use crate::log_adapter::{LogAdapter, QsoRecord, QsoStatus};
 
+/// "YYYYMMDD_HHMMSS"を"YYYY-MM-DD HH:MM:SS"に正規化する。
+/// 形式が想定と違う場合は元の文字列をそのまま返す(壊さない)。
+fn normalize_freedv_datetime(s: &str) -> String {
+    let parts: Vec<&str> = s.splitn(2, '_').collect();
+    if parts.len() != 2 || parts[0].len() != 8 || parts[1].len() < 6 {
+        return s.to_string();
+    }
+    let date = parts[0];
+    let time = parts[1];
+    format!(
+        "{}-{}-{} {}:{}:{}",
+        &date[0..4], &date[4..6], &date[6..8],
+        &time[0..2], &time[2..4], &time[4..6]
+    )
+}
+
 pub struct FreeDvLogAdapter {
     /// 受信したQSOを古い順に積んでいく履歴。UDPプッシュはこのアプリの
     /// プロセス内でしか観測できないため、WSJT-X(ALL.TXT)やfldigi(logbook.adif)
@@ -32,8 +48,10 @@ impl FreeDvLogAdapter {
             rst_rcvd: qso.report_received.clone(),
             freq_mhz: format!("{:.6}", qso.tx_frequency as f64 / 1_000_000.0),
             qso_mode: qso.mode.clone(),
-            time_on: qso.date_time_on.clone(),
-            time_off: qso.date_time_off.clone(),
+            // "YYYYMMDD_HHMMSS"を、wsjtx_log.rs/fldigi_log.rsと揃えた
+            // "YYYY-MM-DD HH:MM:SS"形式に正規化する
+            time_on: normalize_freedv_datetime(&qso.date_time_on),
+            time_off: normalize_freedv_datetime(&qso.date_time_off),
         })
     }
 

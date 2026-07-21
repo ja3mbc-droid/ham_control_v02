@@ -80,15 +80,35 @@ pub fn find_all_qsos(adif_path: &str) -> Vec<QsoRecord> {
         .iter()
         .map(|record| {
             let fields = parse_adif_record(record);
+            // QSO_DATE(YYYYMMDD)とTIME_ON/TIME_OFF(HHMMSS)を、
+            // wsjtx_log.rs/mmsstv_log.rsと揃えた"YYYY-MM-DD HH:MM:SS"形式に正規化する。
+            // hamlog_wmcopydata.rs側で全ソース共通のフォーマットとしてパースするため。
+            let qso_date = fields.get("QSO_DATE").cloned().unwrap_or_default();
+            let format_dt = |date: &str, time: &str| -> String {
+                if date.len() == 8 && time.len() >= 4 {
+                    let hh = &time[0..2];
+                    let mm = &time[2..4.min(time.len())];
+                    let ss = if time.len() >= 6 { &time[4..6] } else { "00" };
+                    format!(
+                        "{}-{}-{} {}:{}:{}",
+                        &date[0..4], &date[4..6], &date[6..8], hh, mm, ss
+                    )
+                } else {
+                    time.to_string()
+                }
+            };
+            let time_on_raw = fields.get("TIME_ON").cloned().unwrap_or_default();
+            let time_off_raw = fields.get("TIME_OFF").cloned().unwrap_or_default();
+
             QsoRecord {
                 peer_call: fields.get("CALL").cloned().unwrap_or_default(),
                 status: Some(QsoStatus::Complete),
-                time_on: fields.get("TIME_ON").cloned().unwrap_or_default(),
+                time_on: format_dt(&qso_date, &time_on_raw),
                 freq_mhz: fields.get("FREQ").cloned().unwrap_or_default(),
                 qso_mode: fields.get("MODE").cloned().unwrap_or_default(),
                 rst_sent: fields.get("RST_SENT").cloned().unwrap_or_default(),
                 rst_rcvd: fields.get("RST_RCVD").cloned().unwrap_or_default(),
-                time_off: fields.get("TIME_OFF").cloned().unwrap_or_default(),
+                time_off: format_dt(&qso_date, &time_off_raw),
             }
         })
         .filter(|r| !r.peer_call.is_empty())

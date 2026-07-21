@@ -2,6 +2,38 @@ use crate::log_adapter::{QsoRecord, QsoStatus};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+/// record.time_on("YYYY-MM-DD HH:MM:SS"形式、wsjtx_log.rs/fldigi_log.rs/
+/// freedv_log.rs/mmsstv_log.rsで共通化済み)を、HAMLOGのDate欄("26/07/21"形式)・
+/// Time欄("13:10U"形式、Uは末尾に付けてUTCであることを示す)に変換する。
+/// パースできない場合はNoneを返し、呼び出し側は空欄のまま送る(HAMLOG既定値に任せる)。
+fn time_on_to_hamlog_date_time(time_on: &str) -> Option<(String, String)> {
+    let mut parts = time_on.splitn(2, ' ');
+    let date_part = parts.next()?;
+    let time_part = parts.next()?;
+
+    let date_fields: Vec<&str> = date_part.split('-').collect();
+    if date_fields.len() != 3 {
+        return None;
+    }
+    let year = date_fields[0];
+    let month = date_fields[1];
+    let day = date_fields[2];
+    let yy = if year.len() == 4 { &year[2..4] } else { year };
+
+    let time_fields: Vec<&str> = time_part.split(':').collect();
+    if time_fields.len() < 2 {
+        return None;
+    }
+    let hh = time_fields[0];
+    let mm = time_fields[1];
+
+    let hamlog_date = format!("{}/{}/{}", yy, month, day);
+    // record.time_onは全ソース共通でUTC基準(ham_control_v02のGUI表示もUT表記)。
+    // HAMLOGのTime欄は末尾のJ/Uでタイムゾーンを示す仕様のため、Uを付ける。
+    let hamlog_time = format!("{}:{}U", hh, mm);
+    Some((hamlog_date, hamlog_time))
+}
+
 /// dwData=15で送る「コールサイン〜Remarks2 + チェックボックス」16行の並び。
 /// 014の実機テスト(L01〜L16を送って確認)で確定した並び:
 ///   1行目: チェックボックス関連(未使用、空)
@@ -15,11 +47,14 @@ fn qso_record_to_16lines(record: &QsoRecord) -> String {
         _ => "",
     };
 
+    let (date_str, time_str) = time_on_to_hamlog_date_time(&record.time_on)
+        .unwrap_or_default();
+
     let lines: [&str; 16] = [
         "",                    // 1: チェックボックス(未使用)
         &record.peer_call,     // 2: Call
-        "",                    // 3: Date(HAMLOG側の既定値に任せる)
-        "",                    // 4: Time(同上)
+        &date_str,             // 3: Date
+        &time_str,             // 4: Time
         &record.rst_sent,      // 5: His
         &record.rst_rcvd,      // 6: My
         &record.freq_mhz,      // 7: Freq
