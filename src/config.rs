@@ -8,6 +8,7 @@ pub struct Config {
     pub fldigi_logbook_path: String,
     pub sent_to_hamlog_path: String,
     pub mmsstv_mdt_path: String,
+    pub hamlog_bridge_exe_path: String,
 }
 
 impl Default for Config {
@@ -22,6 +23,13 @@ impl Default for Config {
             // MMSSTVはコールサイン名の.MDTファイルにログを持つ(例: JA3MBC.MDT)。
             // 呼出符号がハードコードなのは暫定。将来的にはmy_call設定と連動させたい。
             mmsstv_mdt_path: format!("{}/.wine/drive_c/MMSSTV/JA3MBC.MDT", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+            // 014で実装・動作確認したWM_COPYDATA橋渡しプログラム。
+            // リポジトリ同梱のhamlog_bridge/を `cargo build --target x86_64-pc-windows-gnu --release`
+            // した先を既定パスにしている。
+            hamlog_bridge_exe_path: format!(
+                "{}/ham_control_v02/hamlog_bridge/target/x86_64-pc-windows-gnu/release/hamlog_bridge.exe",
+                env::var("HOME").unwrap_or_else(|_| ".".to_string())
+            ),
         }
     }
 }
@@ -57,6 +65,10 @@ pub fn load() -> Config {
 
     if let Ok(path) = env::var("HAM_MMSSTV_MDT_PATH") {
         cfg.mmsstv_mdt_path = path;
+    }
+
+    if let Ok(path) = env::var("HAM_BRIDGE_EXE_PATH") {
+        cfg.hamlog_bridge_exe_path = path;
     }
 
     cfg

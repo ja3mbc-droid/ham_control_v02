@@ -13,6 +13,7 @@ mod wsjtx_receiver;
 mod wsjtx_poller;
 mod hamlog_auto;
 mod mmsstv_log;
+mod hamlog_wmcopydata;
 
 use std::sync::Arc;
 use log_manager::LogManager;

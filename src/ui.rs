@@ -333,6 +333,27 @@ impl eframe::App for App {
                                     );
                                 }
                                 if ui
+                                    .button("HAMLOGへ送信")
+                                    .on_hover_text("WM_COPYDATA経由でLOG-[A]画面へ流し込みます(保存は手動で行ってください)")
+                                    .clicked()
+                                {
+                                    let peer_call = record.peer_call.clone();
+                                    match crate::hamlog_wmcopydata::fill_hamlog_window(
+                                        &self.cfg.hamlog_bridge_exe_path,
+                                        &record,
+                                    ) {
+                                        Ok(()) => {
+                                            self.log_status = format!(
+                                                "{}: HAMLOGのLOG-[A]へ送信しました。内容を確認してSaveを押してください",
+                                                peer_call
+                                            );
+                                        }
+                                        Err(e) => {
+                                            self.log_status = format!("{}: HAMLOGへの送信に失敗しました: {}", peer_call, e);
+                                        }
+                                    }
+                                }
+                                if ui
                                     .button("済にする")
                                     .on_hover_text("HAMLOGへの手入力が完了したら押してください。一覧から消えます")
                                     .clicked()
