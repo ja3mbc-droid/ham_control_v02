@@ -375,6 +375,27 @@ impl eframe::App for App {
                                     }
                                 }
                                 if ui
+                                    .button("日時を再送信")
+                                    .on_hover_text("Call欄のEnterでDate/Timeが現在日時に上書きされた場合、Saveを押す直前にこれで正しいQSO日時に戻せます")
+                                    .clicked()
+                                {
+                                    let peer_call = record.peer_call.clone();
+                                    match crate::hamlog_wmcopydata::resend_date_time(
+                                        &self.cfg.hamlog_bridge_exe_path,
+                                        &record,
+                                    ) {
+                                        Ok(()) => {
+                                            self.log_status = format!(
+                                                "{}: 日時を再送信しました。Saveを押してください",
+                                                peer_call
+                                            );
+                                        }
+                                        Err(e) => {
+                                            self.log_status = format!("{}: 日時の再送信に失敗しました: {}", peer_call, e);
+                                        }
+                                    }
+                                }
+                                if ui
                                     .button("済にする")
                                     .on_hover_text("HAMLOGへの手入力が完了したら押してください。一覧から消えます")
                                     .clicked()

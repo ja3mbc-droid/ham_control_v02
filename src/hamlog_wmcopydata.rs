@@ -200,3 +200,23 @@ pub fn fill_hamlog_window(bridge_exe_path: &str, record: &QsoRecord) -> Result<(
 
     Ok(())
 }
+
+/// Date(dwData=2)・Time(dwData=3)だけを個別に狙い撃ちで再送信する。
+///
+/// HAMLOG本体は、Call欄でEnterされた時点で「新規コールサイン処理」を発火し、
+/// 現在日時・ユーザー名・QTH等を自動的に取得してDate/Time欄を上書きしてしまう
+/// (2026-07-21判明)。そのため、fill_hamlog_window()で一旦全項目を送っても、
+/// 運用者がCall欄で確認のためEnterを押すとDate/Timeが現在日時に戻ってしまう。
+///
+/// この関数は、Saveを押す直前に呼び出す想定。dwData=15(全項目送信)ではなく
+/// dwData=1〜14の個別項目コマンドのうちDate(2)とTime(3)だけを送るため、
+/// 既に入力済みのCall等の他の項目には一切触れない。
+pub fn resend_date_time(bridge_exe_path: &str, record: &QsoRecord) -> Result<(), String> {
+    let (date_str, time_str) = time_on_to_hamlog_date_time(&record.time_on, &record.peer_call)
+        .ok_or_else(|| "QSO時刻を解釈できませんでした(time_onが空、または想定外の形式)".to_string())?;
+
+    run_bridge(bridge_exe_path, 2, &date_str)?; // dwData=2: Date
+    run_bridge(bridge_exe_path, 3, &time_str)?; // dwData=3: Time
+
+    Ok(())
+}
