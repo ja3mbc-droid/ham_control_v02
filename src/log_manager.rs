@@ -4,8 +4,15 @@ use crate::fldigi_log::FldigiLogAdapter;
 use crate::freedv_log::FreeDvLogAdapter;
 use crate::mmsstv_log::MmsstvLogAdapter;
 use crate::wsjtx_protocol::QsoLogged;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// 021: 同一コール+同一周波数のFreeDV QSOが、この秒数以内に連続して
+/// 届いた場合は「同じQSOの再送」とみなして重複記録をスキップする。
+/// (020の完全一致キーだけでは、送信されるtime_onが毎回わずかに違う
+/// 再送パターンを検知できなかったため追加)
+const FREEDV_DUP_WINDOW_SECS: u64 = 60;
 
 pub struct LogManager {
     adapters: Vec<Box<dyn LogAdapter>>,
@@ -18,9 +25,13 @@ pub struct LogManager {
     my_call: String,
     /// 既にCSV/ADIFへ書き込み済みのQSOを覚えておくためのキー集合
     /// (peer_call + time_on + status)。WSJT-Xのcatch-up走査での二重書き込み
-    /// 防止に加え、019以降はFreeDVのUDP再送(同一QSOが複数回Confirmされる等)
+    /// 防止に加え、020以降はFreeDVのUDP再送(同一QSOが複数回Confirmされる等)
     /// による重複記録の防止にも同じ集合を使う。
     written_qso_keys: Mutex<HashSet<String>>,
+    /// 021: FreeDV用の時間窓付き重複排除。キーは"peer_call|freq_mhz"、値は
+    /// 直近に受理(書き込み)した時刻。written_qso_keysだけでは防げない
+    /// 「毎回time_onが違う再送」をここで弾く。
+    freedv_recent: Mutex<HashMap<String, Instant>>,
 }
 
 impl LogManager {
@@ -63,6 +74,7 @@ impl LogManager {
             mmsstv_mdt_path,
             my_call,
             written_qso_keys,
+            freedv_recent: Mutex::new(HashMap::new()),
         }
     }
 
@@ -204,6 +216,27 @@ impl LogManager {
     pub fn handle_freedv_qso(&self, qso: &QsoLogged) {
         if let Some(record) = self.freedv.from_qso(qso) {
             println!("[LogManager] FreeDV QSORecord {:?}", record);
+
+            // 021: 同一コール+同一周波数が短時間(FREEDV_DUP_WINDOW_SECS秒)
+            // 以内に連続した場合、time_onが再送のたびに違っていても
+            // 同一QSOの再送とみなして重複記録をスキップする。
+            let window_key = format!("{}|{}", record.peer_call, record.freq_mhz);
+            let is_window_duplicate = {
+                let mut recent = self.freedv_recent.lock().unwrap();
+                let now = Instant::now();
+                let is_dup = recent
+                    .get(&window_key)
+                    .map(|last| now.duration_since(*last) < Duration::from_secs(FREEDV_DUP_WINDOW_SECS))
+                    .unwrap_or(false);
+                recent.insert(window_key, now);
+                is_dup
+            };
+
+            if is_window_duplicate {
+                println!("[LogManager] FreeDV QSO within dedup window, skipping write: {:?}", record);
+                self.freedv.store_latest(record);
+                return;
+            }
 
             // 020: 同一QSOのUDP再送(FreeDV側の再送信・アプリ再接続時の
             // リプレイ等)による二重記録を防ぐ。WSJT-Xのcatch-up走査と
