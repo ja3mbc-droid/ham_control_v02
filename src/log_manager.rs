@@ -16,10 +16,11 @@ pub struct LogManager {
     fldigi_logbook_path: String,
     mmsstv_mdt_path: String,
     my_call: String,
-    /// 既にCSV/ADIFへ書き込み済みのWSJT-X QSOを覚えておくためのキー集合
-    /// (peer_call + time_on)。パイルアップ時、ALL.TXTを繰り返し走査しても
-    /// 同じ交信を二重に書き込まないようにするための重複排除。
-    written_wsjtx_keys: Mutex<HashSet<String>>,
+    /// 既にCSV/ADIFへ書き込み済みのQSOを覚えておくためのキー集合
+    /// (peer_call + time_on + status)。WSJT-Xのcatch-up走査での二重書き込み
+    /// 防止に加え、019以降はFreeDVのUDP再送(同一QSOが複数回Confirmされる等)
+    /// による重複記録の防止にも同じ集合を使う。
+    written_qso_keys: Mutex<HashSet<String>>,
 }
 
 impl LogManager {
@@ -45,8 +46,8 @@ impl LogManager {
         );
 
         // 起動時に既存の活動ログCSVを読み込み、既に記録済みのQSOキーを
-        // 事前に把握しておく(過去分の再書き込みを防ぐ)。
-        let written_wsjtx_keys = Mutex::new(load_existing_keys(&activity_log_path));
+        // 事前に把握しておく(過去分の再書き込みを防ぐ)。WSJT-X/FreeDV共通。
+        let written_qso_keys = Mutex::new(load_existing_keys(&activity_log_path));
 
         Self {
             adapters: vec![
@@ -61,7 +62,7 @@ impl LogManager {
             fldigi_logbook_path,
             mmsstv_mdt_path,
             my_call,
-            written_wsjtx_keys,
+            written_qso_keys,
         }
     }
 
@@ -91,7 +92,7 @@ impl LogManager {
             let key = format!("{}|{}|{:?}", record.peer_call, record.time_on, record.status);
 
             {
-                let mut seen = self.written_wsjtx_keys.lock().unwrap();
+                let mut seen = self.written_qso_keys.lock().unwrap();
                 if seen.contains(&key) {
                     continue;
                 }
@@ -203,6 +204,27 @@ impl LogManager {
     pub fn handle_freedv_qso(&self, qso: &QsoLogged) {
         if let Some(record) = self.freedv.from_qso(qso) {
             println!("[LogManager] FreeDV QSORecord {:?}", record);
+
+            // 020: 同一QSOのUDP再送(FreeDV側の再送信・アプリ再接続時の
+            // リプレイ等)による二重記録を防ぐ。WSJT-Xのcatch-up走査と
+            // 同じキー形式(peer_call + time_on + status)・同じ集合を使う。
+            let key = format!("{}|{}|{:?}", record.peer_call, record.time_on, record.status);
+            let is_duplicate = {
+                let mut seen = self.written_qso_keys.lock().unwrap();
+                if seen.contains(&key) {
+                    true
+                } else {
+                    seen.insert(key);
+                    false
+                }
+            };
+
+            if is_duplicate {
+                println!("[LogManager] FreeDV QSO already recorded, skipping write: {:?}", record);
+                // 表示上は最新QSOとして扱う(GUIのpollから見えるように)
+                self.freedv.store_latest(record);
+                return;
+            }
 
             match crate::hamlog::append_log_from_record(&record, "", &self.activity_log_path) {
                 Ok(()) => {
