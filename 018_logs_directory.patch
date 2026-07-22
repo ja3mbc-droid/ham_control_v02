@@ -1,0 +1,134 @@
+diff --git a/src/config.rs b/src/config.rs
+index 766f15f..a8e91e0 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -1,9 +1,36 @@
+ use std::env;
++use std::path::PathBuf;
++
++/// 018: ADIF/CSVの保存先ディレクトリ。~/ham_control_v02/logs/ に統一する。
++/// 存在しなければ自動作成する(作成に失敗しても呼び出し元の書き込み処理で
++/// エラーとして表面化するため、ここでは握りつぶす)。
++pub fn logs_dir() -> PathBuf {
++    let dir = PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
++        .join("ham_control_v02")
++        .join("logs");
++
++    if let Err(e) = std::fs::create_dir_all(&dir) {
++        eprintln!("[config] failed to create logs dir {}: {}", dir.display(), e);
++    }
++
++    dir
++}
++
++/// ADIF保存先: ~/ham_control_v02/logs/ham_control_v02.adi
++pub fn adif_path() -> PathBuf {
++    logs_dir().join("ham_control_v02.adi")
++}
++
++/// 活動ログCSV保存先: ~/ham_control_v02/logs/ham_control_v02_activity.csv
++pub fn activity_csv_path() -> PathBuf {
++    logs_dir().join("ham_control_v02_activity.csv")
++}
+ 
+ pub struct Config {
+     pub flrig_addr: String,
+     pub poll_interval_ms: u64,
+     pub activity_log_path: String,
++    pub adif_path: String,
+     pub wsjtx_all_txt_path: String,
+     pub fldigi_logbook_path: String,
+     pub sent_to_hamlog_path: String,
+@@ -16,7 +43,8 @@ impl Default for Config {
+         Self {
+             flrig_addr: "127.0.0.1:12345".to_string(),
+             poll_interval_ms: 1000,
+-            activity_log_path: format!("{}/ham_control_v02_activity.csv", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
++            activity_log_path: activity_csv_path().to_string_lossy().to_string(),
++            adif_path: adif_path().to_string_lossy().to_string(),
+             wsjtx_all_txt_path: format!("{}/.local/share/WSJT-X/ALL.TXT", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+             fldigi_logbook_path: format!("{}/.fldigi/logs/logbook.adif", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+             sent_to_hamlog_path: format!("{}/ham_control_v02_sent_to_hamlog.txt", env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+@@ -51,6 +79,10 @@ pub fn load() -> Config {
+         cfg.activity_log_path = path;
+     }
+ 
++    if let Ok(path) = env::var("HAM_ADIF_PATH") {
++        cfg.adif_path = path;
++    }
++
+     if let Ok(path) = env::var("HAM_WSJTX_ALL_TXT_PATH") {
+         cfg.wsjtx_all_txt_path = path;
+     }
+diff --git a/src/log_manager.rs b/src/log_manager.rs
+index 0875232..8a7f854 100644
+--- a/src/log_manager.rs
++++ b/src/log_manager.rs
+@@ -11,6 +11,7 @@ pub struct LogManager {
+     adapters: Vec<Box<dyn LogAdapter>>,
+     freedv: FreeDvLogAdapter,
+     activity_log_path: String,
++    adif_path: String,
+     wsjtx_all_txt_path: String,
+     fldigi_logbook_path: String,
+     mmsstv_mdt_path: String,
+@@ -26,6 +27,7 @@ impl LogManager {
+         wsjtx_all_txt_path: String,
+         my_call: String,
+         activity_log_path: String,
++        adif_path: String,
+         fldigi_logbook_path: String,
+         mmsstv_mdt_path: String,
+     ) -> Self {
+@@ -54,6 +56,7 @@ impl LogManager {
+             ],
+             freedv: FreeDvLogAdapter::new(),
+             activity_log_path,
++            adif_path,
+             wsjtx_all_txt_path,
+             fldigi_logbook_path,
+             mmsstv_mdt_path,
+@@ -106,13 +109,9 @@ impl LogManager {
+                 }
+             }
+ 
+-            let adif_path = format!(
+-                "{}/ham_control_v02.adi",
+-                std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+-            );
+-            match crate::hamlog::append_adif_from_record(&record, comment1, &adif_path) {
++            match crate::hamlog::append_adif_from_record(&record, comment1, &self.adif_path) {
+                 Ok(()) => {
+-                    println!("[LogManager] wrote WSJT-X QSO to {}", adif_path);
++                    println!("[LogManager] wrote WSJT-X QSO to {}", self.adif_path);
+                 }
+                 Err(e) => {
+                     eprintln!("[LogManager] failed to write WSJT-X QSO to ADIF: {}", e);
+@@ -214,13 +213,9 @@ impl LogManager {
+                 }
+             }
+ 
+-            let adif_path = format!(
+-                "{}/ham_control_v02.adi",
+-                std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+-            );
+-            match crate::hamlog::append_adif_from_record(&record, "", &adif_path) {
++            match crate::hamlog::append_adif_from_record(&record, "", &self.adif_path) {
+                 Ok(()) => {
+-                    println!("[LogManager] wrote FreeDV QSO to {}", adif_path);
++                    println!("[LogManager] wrote FreeDV QSO to {}", self.adif_path);
+                 }
+                 Err(e) => {
+                     eprintln!("[LogManager] failed to write FreeDV QSO to ADIF: {}", e);
+diff --git a/src/main.rs b/src/main.rs
+index b260bac..9c2b962 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -25,6 +25,7 @@ fn main() -> eframe::Result<()> {
+         cfg.wsjtx_all_txt_path.clone(),
+         "JA3MBC".to_string(),
+         cfg.activity_log_path.clone(),
++        cfg.adif_path.clone(),
+         cfg.fldigi_logbook_path.clone(),
+         cfg.mmsstv_mdt_path.clone(),
+     ));

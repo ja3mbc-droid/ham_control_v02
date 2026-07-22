@@ -11,6 +11,7 @@ pub struct LogManager {
     adapters: Vec<Box<dyn LogAdapter>>,
     freedv: FreeDvLogAdapter,
     activity_log_path: String,
+    adif_path: String,
     wsjtx_all_txt_path: String,
     fldigi_logbook_path: String,
     mmsstv_mdt_path: String,
@@ -26,6 +27,7 @@ impl LogManager {
         wsjtx_all_txt_path: String,
         my_call: String,
         activity_log_path: String,
+        adif_path: String,
         fldigi_logbook_path: String,
         mmsstv_mdt_path: String,
     ) -> Self {
@@ -54,6 +56,7 @@ impl LogManager {
             ],
             freedv: FreeDvLogAdapter::new(),
             activity_log_path,
+            adif_path,
             wsjtx_all_txt_path,
             fldigi_logbook_path,
             mmsstv_mdt_path,
@@ -106,13 +109,9 @@ impl LogManager {
                 }
             }
 
-            let adif_path = format!(
-                "{}/ham_control_v02.adi",
-                std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
-            );
-            match crate::hamlog::append_adif_from_record(&record, comment1, &adif_path) {
+            match crate::hamlog::append_adif_from_record(&record, comment1, &self.adif_path) {
                 Ok(()) => {
-                    println!("[LogManager] wrote WSJT-X QSO to {}", adif_path);
+                    println!("[LogManager] wrote WSJT-X QSO to {}", self.adif_path);
                 }
                 Err(e) => {
                     eprintln!("[LogManager] failed to write WSJT-X QSO to ADIF: {}", e);
@@ -214,13 +213,9 @@ impl LogManager {
                 }
             }
 
-            let adif_path = format!(
-                "{}/ham_control_v02.adi",
-                std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
-            );
-            match crate::hamlog::append_adif_from_record(&record, "", &adif_path) {
+            match crate::hamlog::append_adif_from_record(&record, "", &self.adif_path) {
                 Ok(()) => {
-                    println!("[LogManager] wrote FreeDV QSO to {}", adif_path);
+                    println!("[LogManager] wrote FreeDV QSO to {}", self.adif_path);
                 }
                 Err(e) => {
                     eprintln!("[LogManager] failed to write FreeDV QSO to ADIF: {}", e);

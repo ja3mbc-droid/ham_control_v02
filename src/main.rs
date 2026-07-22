@@ -25,6 +25,7 @@ fn main() -> eframe::Result<()> {
         cfg.wsjtx_all_txt_path.clone(),
         "JA3MBC".to_string(),
         cfg.activity_log_path.clone(),
+        cfg.adif_path.clone(),
         cfg.fldigi_logbook_path.clone(),
         cfg.mmsstv_mdt_path.clone(),
     ));
