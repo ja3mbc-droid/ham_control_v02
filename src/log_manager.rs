@@ -242,6 +242,11 @@ fn load_existing_keys(path: &str) -> HashSet<String> {
     };
 
     for line in content.lines() {
+        if line.starts_with("TIME_ON,") {
+            // ヘッダー行(019で追加)はデータとして扱わない
+            continue;
+        }
+
         let fields: Vec<&str> = line.split(',').collect();
         if fields.len() < 5 {
             continue;

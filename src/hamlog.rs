@@ -53,6 +53,33 @@ fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// CSVの1フィールドを安全な形にエスケープする(RFC4180準拠の簡易実装)。
+/// フィールドにカンマ・ダブルクォート・改行が含まれる場合のみダブルクォートで
+/// 囲み、内部のダブルクォートは二重化する。それ以外はそのまま返す。
+fn csv_escape(field: &str) -> String {
+    if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
+        format!("\"{}\"", field.replace('"', "\"\""))
+    } else {
+        field.to_string()
+    }
+}
+
+/// CSVファイルが新規作成の場合のみ、ヘッダー行を書き込む。
+/// 既存ファイルには何もしない(過去分の再フォーマットは行わない)。
+fn write_csv_header_if_new(path: &str) -> Result<(), String> {
+    if std::path::Path::new(path).exists() {
+        return Ok(());
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+
+    file.write_all(csv_header().as_bytes()).map_err(|e| e.to_string())
+}
+
 /// 運用記録をローカルCSVファイルに追記する。
 /// ADIF標準フィールド名に準じた項目構成(将来のADIF変換を見据えた設計)。
 /// callsign / comment1 / comment2 は現時点では空欄(将来、手入力欄をGUIに追加予定)。
@@ -76,9 +103,19 @@ pub fn append_log(
         .map(|mhz| format!("{:.6}", mhz))
         .unwrap_or_else(|| "----".to_string());
 
+    write_csv_header_if_new(path)?;
+
     let line = format!(
         "{},{},{},{},{},{},{},{},{}\n",
-        time_on, time_off, freq_mhz, state.mode, callsign, rst_sent, rst_rcvd, comment1, comment2
+        csv_escape(&time_on),
+        csv_escape(&time_off),
+        csv_escape(&freq_mhz),
+        csv_escape(&state.mode),
+        csv_escape(callsign),
+        csv_escape(rst_sent),
+        csv_escape(rst_rcvd),
+        csv_escape(comment1),
+        csv_escape(comment2),
     );
 
     let mut file = OpenOptions::new()
@@ -178,16 +215,18 @@ pub fn append_log_from_record(
     comment1: &str,
     path: &str,
 ) -> Result<(), String> {
+    write_csv_header_if_new(path)?;
+
     let line = format!(
         "{},{},{},{},{},{},{},{},{}\n",
-        record.time_on,
-        record.time_off,
-        record.freq_mhz,
-        record.qso_mode,
-        record.peer_call,
-        record.rst_sent,
-        record.rst_rcvd,
-        comment1,
+        csv_escape(&record.time_on),
+        csv_escape(&record.time_off),
+        csv_escape(&record.freq_mhz),
+        csv_escape(&record.qso_mode),
+        csv_escape(&record.peer_call),
+        csv_escape(&record.rst_sent),
+        csv_escape(&record.rst_rcvd),
+        csv_escape(comment1),
         "",
     );
 
