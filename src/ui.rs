@@ -266,7 +266,7 @@ impl eframe::App for App {
             }
 
             ui.separator();
-            ui.label(format!("TIME_ON: {}", self.last_time_on));
+            ui.label(format!("TIME_ON  : {}", self.last_time_on));
             ui.label(format!("TIME_OFF: {}", self.last_time_off));
             ui.separator();
 
