@@ -64,6 +64,7 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
             qsl_rcvd_input: String::new(),
             log_source_selected: "WSJT-X".to_string(),
             recent_tab: RecentTab::RecentQsos,
+            stations_heard_source: HeardSource::FreeDv,
             stations_heard: Vec::new(),
             stations_heard_loaded: false,
             stations_heard_limit: 100,
@@ -81,6 +82,17 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
 enum RecentTab {
     RecentQsos,
     StationsHeard,
+}
+
+/// Stations Heard内でのログソース切替(027、ChatGPTレビュー③に基づく)。
+/// タブを増やすのではなく、Stations Heardパネル内でラジオボタンにより
+/// WSJT-X(ALL.TXT)/FreeDV(freedv_rx_log.csv)を切り替える。
+/// fldigi/MMSSTVは実機確認の結果、受信専用ログを持たないため対象外
+/// (docs/claude/016参照)。
+#[derive(PartialEq, Clone, Copy)]
+enum HeardSource {
+    WsjtX,
+    FreeDv,
 }
 
 struct App {
@@ -113,6 +125,9 @@ struct App {
     /// 「聞こえた局一覧を見ながら誤ってHAMLOG送信ボタンを探す」という導線自体を生まない
     /// という設計方針(ChatGPT側との合意、022時点)を実装する。
     recent_tab: RecentTab,
+    /// Stations Heard内で表示中のログソース(027)。切り替えた時点で
+    /// refresh_stations_heard()を呼び直し、新ソースのデータを読み込む。
+    stations_heard_source: HeardSource,
     /// Stations Heardの表示データのキャッシュ。CSVを毎フレーム読むのではなく
     /// 「更新」ボタンが押された時、および表示件数が変更された時だけ読み直す。
     stations_heard: Vec<crate::freedv_rx_log::RxStationRecord>,
@@ -205,12 +220,23 @@ impl App {
         self.sent_to_hamlog.insert(key);
     }
 
-    /// Stations Heardの表示データをfreedv_rx_log.csvから読み直す。
+    /// Stations Heardの表示データを、選択中のソース(WSJT-X/FreeDV)から読み直す。
     /// 「直近の交信一覧」と違い毎フレーム読むのではなく、この関数が呼ばれた時
-    /// (更新ボタン押下時・件数変更時・タブ初回表示時)だけディスクを読む。
+    /// (更新ボタン押下時・件数変更時・ソース切替時・タブ初回表示時)だけディスクを読む。
+    /// 027: WSJT-X版はALL.TXTを、FreeDV版はfreedv_rx_log.csvを読む。どちらも
+    /// 戻り値はRxStationRecordに統一されているため、GUI側の表示ロジックは
+    /// ソースを意識しない(入力アダプタ方式、ChatGPTレビュー④に基づく)。
     fn refresh_stations_heard(&mut self) {
-        self.stations_heard =
-            crate::freedv_rx_log::recent(&self.cfg.freedv_rx_log_path, self.stations_heard_limit);
+        self.stations_heard = match self.stations_heard_source {
+            HeardSource::WsjtX => crate::wsjtx_log::recent_heard(
+                &self.cfg.wsjtx_all_txt_path,
+                self.log_manager.my_call(),
+                self.stations_heard_limit,
+            ),
+            HeardSource::FreeDv => {
+                crate::freedv_rx_log::recent(&self.cfg.freedv_rx_log_path, self.stations_heard_limit)
+            }
+        };
         self.log_status = format!("Stations Heard: {}件読み込みました", self.stations_heard.len());
     }
 }
@@ -459,11 +485,26 @@ impl eframe::App for App {
                     self.stations_heard_loaded = true;
                     self.refresh_stations_heard();
                 }
-                ui.label("Stations Heard(FreeDVで聞こえた局。交信有無を問わず全件表示、HAMLOG送信対象外):");
+                ui.label("Stations Heard(聞こえた局。交信有無を問わず全件表示、HAMLOG送信対象外):");
+                ui.horizontal(|ui| {
+                    ui.label("ソース:");
+                    if ui
+                        .selectable_value(&mut self.stations_heard_source, HeardSource::WsjtX, "WSJT-X")
+                        .clicked()
+                    {
+                        self.refresh_stations_heard();
+                    }
+                    if ui
+                        .selectable_value(&mut self.stations_heard_source, HeardSource::FreeDv, "FreeDV")
+                        .clicked()
+                    {
+                        self.refresh_stations_heard();
+                    }
+                });
                 ui.horizontal(|ui| {
                     if ui
                         .button("更新")
-                        .on_hover_text("freedv_rx_log.csvを読み直します")
+                        .on_hover_text("選択中のソースを読み直します")
                         .clicked()
                     {
                         self.refresh_stations_heard();
@@ -494,15 +535,26 @@ impl eframe::App for App {
                     .id_source("stations_heard_scroll")
                     .show(ui, |ui| {
                         if self.stations_heard.is_empty() {
-                            let exists = std::path::Path::new(&self.cfg.freedv_rx_log_path).exists();
+                            let path = match self.stations_heard_source {
+                                HeardSource::WsjtX => &self.cfg.wsjtx_all_txt_path,
+                                HeardSource::FreeDv => &self.cfg.freedv_rx_log_path,
+                            };
+                            let exists = std::path::Path::new(path).exists();
                             if exists {
                                 ui.label("(表示できる受信データがありません)");
                             } else {
                                 ui.colored_label(
                                     egui::Color32::YELLOW,
-                                    format!("※CSVファイルが見つかりません: {}", self.cfg.freedv_rx_log_path),
+                                    format!("※ファイルが見つかりません: {}", path),
                                 );
-                                ui.label("HAM_FREEDV_RX_LOG_PATH環境変数、またはFreeDVの Options > Reporting の保存先を確認してください。");
+                                match self.stations_heard_source {
+                                    HeardSource::WsjtX => {
+                                        ui.label("HAM_WSJTX_ALL_TXT_PATH環境変数、またはWSJT-XのALL.TXT保存先を確認してください。");
+                                    }
+                                    HeardSource::FreeDv => {
+                                        ui.label("HAM_FREEDV_RX_LOG_PATH環境変数、またはFreeDVの Options > Reporting の保存先を確認してください。");
+                                    }
+                                }
                             }
                         } else if filtered.is_empty() {
                             ui.label(format!("「{}」に一致する局はありません", self.stations_heard_filter));

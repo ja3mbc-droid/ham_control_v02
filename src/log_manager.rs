@@ -78,6 +78,12 @@ impl LogManager {
         }
     }
 
+    /// 027: Stations Heard(WSJT-X版)がALL.TXTを自局コールで判定するために必要。
+    /// LogManagerの外(ui.rs)からmy_callへアクセスするための唯一の窓口。
+    pub fn my_call(&self) -> &str {
+        &self.my_call
+    }
+
     /// ALL.TXTを再走査し、まだ書き込んでいないQSOがあれば、その場でCSV/ADIFへ
     /// 即時追記する。GUIでの表示/未表示に関わらずデータを残すためのバックグラウンド処理。
     /// wsjtx_poller(数秒おきのタイマースレッド)から呼ばれる想定。

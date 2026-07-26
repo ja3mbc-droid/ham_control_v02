@@ -1,5 +1,6 @@
 use std::fs;
 use crate::log_adapter::{LogAdapter, QsoRecord, QsoStatus};
+use crate::freedv_rx_log::RxStationRecord;
 
 /// WSJT-XのALL.TXTを読むアダプタ
 pub struct WsjtxLogAdapter {
@@ -345,4 +346,111 @@ fn parse_ymd_hms(dt: &str) -> Option<(String, i64)> {
     let m: i64 = t[1].parse().ok()?;
     let s: i64 = t[2].parse().ok()?;
     Some((date, h * 3600 + m * 60 + s))
+}
+
+/// ALL.TXTから「実際に聞こえた局」をStations Heard表示用に抽出する。
+/// read_latest_qso()/extract_all_qsos()(交信ログ用、QsoRecordを返す)とは
+/// 責務を完全に分離しており、こちらは既存のQSO抽出ロジックには一切触れない。
+///
+/// FT8/FT4の標準メッセージは "<相手局> <自局> <レポート等>" 、CQは
+/// "CQ <自局> <グリッド>" という並びのため、fields[8]が常に「そのdecode行を
+/// 実際に送信した(=聞こえた)局」のコールサインになる。read_latest_qso()の
+/// sender/receiver判定(fields[7]==my_callかどうかで相手を判定)とは違い、
+/// こちらはCQ行(相手が定まらない行)も含めて全Rx行を対象にするため、
+/// 常にfields[8]を「聞こえた局」として採用する単純な方式で十分。
+///
+/// 重複排除は行わない(FreeDV版と統一。同じ局が何度も聞こえた事実も
+/// 受信履歴としてそのまま記録する方針、ChatGPTレビューでの合意事項)。
+/// 戻り値は新しい順(最新が先頭)で直近limit件。
+pub fn recent_heard(all_txt_path: &str, my_call: &str, limit: usize) -> Vec<RxStationRecord> {
+    let content = match fs::read_to_string(all_txt_path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut records: Vec<RxStationRecord> = content
+        .lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() < 9 || f[2] != "Rx" {
+                return None;
+            }
+            let heard_call = f[8];
+            if heard_call.is_empty() || heard_call == my_call {
+                return None;
+            }
+
+            let dial_freq = f.get(1).copied().unwrap_or("0");
+            let offset_hz = f.get(6).copied().unwrap_or("0");
+            let freq_mhz: f64 = compute_actual_freq_mhz(dial_freq, offset_hz)
+                .parse()
+                .unwrap_or(0.0);
+            let frequency_hz = (freq_mhz * 1_000_000.0).round() as u64;
+
+            let snr_db: i32 = f.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let mode = f.get(3).copied().unwrap_or("----").to_string();
+
+            let datetime = parse_datetime(f[0]);
+            let (date, time) = match datetime.split_once(' ') {
+                Some((d, t)) => (d.to_string(), t.to_string()),
+                None => (datetime, String::new()),
+            };
+
+            Some(RxStationRecord {
+                date,
+                time,
+                callsign: heard_call.to_string(),
+                mode,
+                frequency_hz,
+                snr_db,
+            })
+        })
+        .collect();
+
+    records.reverse();
+    records.truncate(limit);
+    records
+}
+
+#[cfg(test)]
+mod recent_heard_tests {
+    use super::*;
+
+    #[test]
+    fn extracts_heard_stations_including_cq() {
+        let all_txt = "\
+193013  14.074 Rx FT8      0  0.1 1250 CQ JA1XYZ PM95\n\
+193028  14.074 Rx FT8    -12  0.2 1251 JA3MBC JA1XYZ -05\n\
+193043  14.074 Rx FT8    -15  0.1 1252 JA3MBC JA1XYZ R-08\n\
+193058  14.074 Tx FT8      0  0.0    0 JA1XYZ JA3MBC RR73\n";
+
+        let dir = std::env::temp_dir().join(format!("wsjtx_recent_heard_test_{}.txt", std::process::id()));
+        std::fs::write(&dir, all_txt).unwrap();
+
+        // dir=Txの行は除外され、Rxの3行だけが対象になる。いずれもJA1XYZからの
+        // 送信(FT8標準書式「<相手局> <自局> <内容>」でfields[8]が送信局)。
+        let heard = recent_heard(dir.to_str().unwrap(), "JA3MBC", 10);
+        assert_eq!(heard.len(), 3);
+        assert!(heard.iter().all(|r| r.callsign == "JA1XYZ"));
+
+        std::fs::remove_file(&dir).ok();
+    }
+
+    #[test]
+    fn respects_limit() {
+        let all_txt = "\
+193013  14.074 Rx FT8      0  0.1 1250 CQ JA1AAA PM95\n\
+193028  14.074 Rx FT8      0  0.1 1250 CQ JA1BBB PM95\n\
+193043  14.074 Rx FT8      0  0.1 1250 CQ JA1CCC PM95\n";
+
+        let dir = std::env::temp_dir().join(format!("wsjtx_recent_heard_limit_test_{}.txt", std::process::id()));
+        std::fs::write(&dir, all_txt).unwrap();
+
+        let heard = recent_heard(dir.to_str().unwrap(), "JA3MBC", 2);
+        assert_eq!(heard.len(), 2);
+        assert_eq!(heard[0].callsign, "JA1CCC");
+        assert_eq!(heard[1].callsign, "JA1BBB");
+
+        std::fs::remove_file(&dir).ok();
+    }
 }
