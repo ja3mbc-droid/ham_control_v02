@@ -14,6 +14,7 @@ mod wsjtx_poller;
 mod hamlog_auto;
 mod mmsstv_log;
 mod hamlog_wmcopydata;
+mod freedv_rx_log;
 
 use std::sync::Arc;
 use log_manager::LogManager;

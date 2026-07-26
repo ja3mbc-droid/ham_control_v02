@@ -36,6 +36,7 @@ pub struct Config {
     pub sent_to_hamlog_path: String,
     pub mmsstv_mdt_path: String,
     pub hamlog_bridge_exe_path: String,
+    pub freedv_rx_log_path: String,
 }
 
 impl Default for Config {
@@ -58,6 +59,16 @@ impl Default for Config {
                 "{}/ham_control_v02/hamlog_bridge/target/x86_64-pc-windows-gnu/release/hamlog_bridge.exe",
                 env::var("HOME").unwrap_or_else(|_| ".".to_string())
             ),
+            // FreeDV公式(drowe67/freedv-gui)のReportingConfiguration::loadで
+            // 決まるデフォルト保存先。$XDG_DATA_HOME(未設定なら$HOME/.local/share)
+            // 配下のfreedv/freedv_rx_log.csv。FreeDV側の「Options > Reporting」で
+            // 変更されている場合はHAM_FREEDV_RX_LOG_PATHで上書きすること。
+            freedv_rx_log_path: {
+                let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                let xdg_data_home = env::var("XDG_DATA_HOME")
+                    .unwrap_or_else(|_| format!("{}/.local/share", home));
+                format!("{}/freedv/freedv_rx_log.csv", xdg_data_home)
+            },
         }
     }
 }
@@ -101,6 +112,10 @@ pub fn load() -> Config {
 
     if let Ok(path) = env::var("HAM_BRIDGE_EXE_PATH") {
         cfg.hamlog_bridge_exe_path = path;
+    }
+
+    if let Ok(path) = env::var("HAM_FREEDV_RX_LOG_PATH") {
+        cfg.freedv_rx_log_path = path;
     }
 
     cfg

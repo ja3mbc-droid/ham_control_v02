@@ -63,10 +63,24 @@ pub fn run(log_manager: Arc<LogManager>) -> eframe::Result<()> {
             qsl_sent_input: String::new(),
             qsl_rcvd_input: String::new(),
             log_source_selected: "WSJT-X".to_string(),
+            recent_tab: RecentTab::RecentQsos,
+            stations_heard: Vec::new(),
+            stations_heard_loaded: false,
+            stations_heard_limit: 100,
+            stations_heard_filter: String::new(),
             sent_to_hamlog,
             })
         }),
     )
+}
+
+/// 「直近の交信一覧(Recent QSOs)」と「Stations Heard」のタブ選択状態。
+/// QsoRecord系統とRxStationRecord系統を画面上も完全に分離するためのもので、
+/// これ自体はどちらのレコード型も保持しない(単なる表示切り替えフラグ)。
+#[derive(PartialEq, Clone, Copy)]
+enum RecentTab {
+    RecentQsos,
+    StationsHeard,
 }
 
 struct App {
@@ -94,6 +108,21 @@ struct App {
     qsl_sent_input: String,
     qsl_rcvd_input: String,
     log_source_selected: String,
+    /// 「直近の交信一覧」と「Stations Heard」のどちらを表示中か。
+    /// データ構造(QsoRecord/RxStationRecord)だけでなく画面表示も完全に分けることで、
+    /// 「聞こえた局一覧を見ながら誤ってHAMLOG送信ボタンを探す」という導線自体を生まない
+    /// という設計方針(ChatGPT側との合意、022時点)を実装する。
+    recent_tab: RecentTab,
+    /// Stations Heardの表示データのキャッシュ。CSVを毎フレーム読むのではなく
+    /// 「更新」ボタンが押された時、および表示件数が変更された時だけ読み直す。
+    stations_heard: Vec<crate::freedv_rx_log::RxStationRecord>,
+    /// タブを最初に開いた時に一度だけ自動読込するためのフラグ
+    stations_heard_loaded: bool,
+    /// Stations Heardの表示件数(recent()に渡すlimit)。DragValueで調整
+    stations_heard_limit: usize,
+    /// Stations Heardのコールサイン検索文字列(部分一致、大文字小文字を無視)。
+    /// キャッシュ済みのstations_heardに対してのみ絞り込み、ディスク再読込はしない
+    stations_heard_filter: String,
     /// HAMLOGへの手入力が完了した(運用者が「済」ボタンを押した)QSOのキー集合
     /// (peer_call|time_on|status)。「直近の交信一覧」から済みQSOを非表示にするため。
     /// `cfg.sent_to_hamlog_path`のテキストファイルに1行1キーで永続化しており、
@@ -174,6 +203,15 @@ impl App {
             self.log_status = format!("済みマークの保存に失敗しました({}): {}", self.cfg.sent_to_hamlog_path, e);
         }
         self.sent_to_hamlog.insert(key);
+    }
+
+    /// Stations Heardの表示データをfreedv_rx_log.csvから読み直す。
+    /// 「直近の交信一覧」と違い毎フレーム読むのではなく、この関数が呼ばれた時
+    /// (更新ボタン押下時・件数変更時・タブ初回表示時)だけディスクを読む。
+    fn refresh_stations_heard(&mut self) {
+        self.stations_heard =
+            crate::freedv_rx_log::recent(&self.cfg.freedv_rx_log_path, self.stations_heard_limit);
+        self.log_status = format!("Stations Heard: {}件読み込みました", self.stations_heard.len());
     }
 }
 
@@ -289,12 +327,18 @@ impl eframe::App for App {
                 }
             }
 
-            {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.recent_tab, RecentTab::RecentQsos, "Recent QSOs");
+                ui.selectable_value(&mut self.recent_tab, RecentTab::StationsHeard, "Stations Heard");
+            });
+
+            if self.recent_tab == RecentTab::RecentQsos {
                 let source = self.log_source_selected.clone();
-                ui.separator();
                 ui.label(format!("直近の交信一覧({}, クリックで入力欄へ読込→HAMLOGへ手入力):", source));
                 egui::ScrollArea::vertical()
                     .max_height(160.0)
+                    .id_source("recent_qsos_scroll")
                     .show(ui, |ui| {
                         let raw: Vec<_> = match source.as_str() {
                             "WSJT-X" => self.log_manager.recent_wsjtx_qsos(10),
@@ -404,6 +448,75 @@ impl eframe::App for App {
                                     self.log_status = format!("{}: 済みにしました", record.peer_call);
                                 }
                             });
+                        }
+                    });
+            } else {
+                // Stations Heard: FreeDVのfreedv_rx_log.csvを明示的な操作
+                // (更新ボタン・件数変更・タブ初回表示)の時だけ読み直して表示する
+                // 閲覧専用パネル。QsoRecord/HAMLOG送信ボタンには一切関与しない
+                // (022〜023の設計方針: 交信していない局を誤ってHAMLOGへ送る事故防止)。
+                if !self.stations_heard_loaded {
+                    self.stations_heard_loaded = true;
+                    self.refresh_stations_heard();
+                }
+                ui.label("Stations Heard(FreeDVで聞こえた局。交信有無を問わず全件表示、HAMLOG送信対象外):");
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("更新")
+                        .on_hover_text("freedv_rx_log.csvを読み直します")
+                        .clicked()
+                    {
+                        self.refresh_stations_heard();
+                    }
+                    ui.label("表示件数:");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut self.stations_heard_limit)
+                                .clamp_range(1..=1000),
+                        )
+                        .changed()
+                    {
+                        self.refresh_stations_heard();
+                    }
+                    ui.label("コールサイン検索:");
+                    ui.text_edit_singleline(&mut self.stations_heard_filter);
+                });
+
+                let filter = self.stations_heard_filter.trim().to_uppercase();
+                let filtered: Vec<&crate::freedv_rx_log::RxStationRecord> = self
+                    .stations_heard
+                    .iter()
+                    .filter(|s| filter.is_empty() || s.callsign.to_uppercase().contains(&filter))
+                    .collect();
+
+                egui::ScrollArea::vertical()
+                    .max_height(160.0)
+                    .id_source("stations_heard_scroll")
+                    .show(ui, |ui| {
+                        if self.stations_heard.is_empty() {
+                            let exists = std::path::Path::new(&self.cfg.freedv_rx_log_path).exists();
+                            if exists {
+                                ui.label("(表示できる受信データがありません)");
+                            } else {
+                                ui.colored_label(
+                                    egui::Color32::YELLOW,
+                                    format!("※CSVファイルが見つかりません: {}", self.cfg.freedv_rx_log_path),
+                                );
+                                ui.label("HAM_FREEDV_RX_LOG_PATH環境変数、またはFreeDVの Options > Reporting の保存先を確認してください。");
+                            }
+                        } else if filtered.is_empty() {
+                            ui.label(format!("「{}」に一致する局はありません", self.stations_heard_filter));
+                        }
+                        for station in &filtered {
+                            ui.label(format!(
+                                "{} {}  {}  {}  {:.6} MHz  SNR {}",
+                                station.date,
+                                station.time,
+                                station.callsign,
+                                station.mode,
+                                station.frequency_hz as f64 / 1_000_000.0,
+                                station.snr_db
+                            ));
                         }
                     });
             }
