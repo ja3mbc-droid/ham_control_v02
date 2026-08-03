@@ -189,6 +189,40 @@ impl App {
         format!("{}|{}|{:?}", record.peer_call, record.time_on, record.status)
     }
 
+    /// QsoRecord.time_on/time_off(UTC, "YYYY-MM-DD HH:MM:SS")をJST(+9h)に変換して
+    /// 表示用文字列を返す。Recent QSOs一覧はUTC(内部保存形式)ではなく、運用者が
+    /// 見慣れたJSTで表示するための表示層専用の変換(保存側のUTCはそのまま維持)。
+    /// パースに失敗した場合は元の文字列をそのまま返す(表示が壊れないためのフォールバック)。
+    fn format_time_on_jst(utc: &str) -> String {
+        let mut parts = utc.splitn(2, ' ');
+        let (date_part, time_part) = match (parts.next(), parts.next()) {
+            (Some(d), Some(t)) => (d, t),
+            _ => return utc.to_string(),
+        };
+        let dp: Vec<&str> = date_part.split('-').collect();
+        let tp: Vec<&str> = time_part.split(':').collect();
+        if dp.len() != 3 || tp.len() != 3 {
+            return utc.to_string();
+        }
+        let parsed: Option<(u32, u32, u32, u32, u32, u32)> = (|| {
+            Some((
+                dp[0].parse().ok()?,
+                dp[1].parse().ok()?,
+                dp[2].parse().ok()?,
+                tp[0].parse().ok()?,
+                tp[1].parse().ok()?,
+                tp[2].parse().ok()?,
+            ))
+        })();
+        let (y, mo, d, h, mi, s) = match parsed {
+            Some(v) => v,
+            None => return utc.to_string(),
+        };
+        let (y, mo, d, h, mi, s) =
+            crate::log_adapter::shift_datetime_hours(y, mo, d, h, mi, s, 9);
+        format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, mo, d, h, mi, s)
+    }
+
     /// sent_to_hamlogの永続化ファイル(1行1キー)を読み込む。
     /// ファイルが無い場合(初回起動時)は空集合を返す。
     fn load_sent_to_hamlog(path: &str) -> std::collections::HashSet<String> {
@@ -410,7 +444,7 @@ impl eframe::App for App {
                             };
                             let row_label = format!(
                                 "{}  {}  {} MHz  {}  [{}]",
-                                record.time_on, record.peer_call, record.freq_mhz, record.qso_mode, status_label
+                                Self::format_time_on_jst(&record.time_on), record.peer_call, record.freq_mhz, record.qso_mode, status_label
                             );
                             let key = Self::record_key(&record);
 

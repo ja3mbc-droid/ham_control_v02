@@ -89,8 +89,8 @@ fn decode_datetime(year_byte: u8, date: u16, time: u16) -> String {
     };
 
     // date は月*100+日 の単純な10進パック値(2026-08-03の実データで検証済み)
-    let month = date / 100;
-    let day = date % 100;
+    let month = (date / 100) as u32;
+    let day = (date % 100) as u32;
 
     // time は「深夜0時からの経過秒数 / 2」を素直に格納した値。
     // time=0(未記録)の場合は自然に00:00:00になる
@@ -98,6 +98,12 @@ fn decode_datetime(year_byte: u8, date: u16, time: u16) -> String {
     let hour = total_seconds / 3600;
     let minute = (total_seconds % 3600) / 60;
     let second = total_seconds % 60;
+
+    // .MDTのdate/timeはJST(ローカル)基準のため、QsoRecordの設計方針
+    // (time_on/time_offは全LogAdapter共通でUTC)に合わせてここでUTCへ変換する。
+    // hamlog_wmcopydata.rs側は既存のUTC→JST(+9)変換をそのまま使う(変更不要)。
+    let (year, month, day, hour, minute, second) =
+        crate::log_adapter::shift_datetime_hours(year, month, day, hour, minute, second, -9);
 
     format!(
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",

@@ -30,3 +30,70 @@ pub trait LogAdapter: Send + Sync {
     /// このアダプタが対応しているソフト名(表示用)
     fn name(&self) -> &'static str;
 }
+
+/// 年月日時分秒を、指定した時間(delta_hours)だけシフトする(日付・月・年またぎに対応)。
+/// タイムゾーン変換(JST⇔UTCの±9時間)用の共通ユーティリティ。
+/// delta_hoursは±24時間未満のシフトを想定(それ以上の大きなシフトは非対応)。
+pub fn shift_datetime_hours(
+    year: u32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
+    delta_hours: i32,
+) -> (u32, u32, u32, u32, u32, u32) {
+    let mut total_hour = hour as i32 + delta_hours;
+    let mut y = year;
+    let mut mo = month;
+    let mut d = day;
+
+    while total_hour < 0 {
+        total_hour += 24;
+        if d > 1 {
+            d -= 1;
+        } else if mo > 1 {
+            mo -= 1;
+            d = days_in_month(y, mo);
+        } else {
+            mo = 12;
+            y -= 1;
+            d = days_in_month(y, mo);
+        }
+    }
+    while total_hour >= 24 {
+        total_hour -= 24;
+        let dim = days_in_month(y, mo);
+        if d < dim {
+            d += 1;
+        } else if mo < 12 {
+            mo += 1;
+            d = 1;
+        } else {
+            mo = 1;
+            y += 1;
+            d = 1;
+        }
+    }
+
+    (y, mo, d, total_hour as u32, minute, second)
+}
+
+fn is_leap_year(year: u32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if is_leap_year(year) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 30,
+    }
+}
