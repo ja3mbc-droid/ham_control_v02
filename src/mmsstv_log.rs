@@ -74,22 +74,31 @@ fn decode_field(bytes: &[u8]) -> String {
     s.trim().to_string()
 }
 
-/// date(WORD)・btime/etime(WORD)を、DOS FAT形式(推定)としてデコードする。
-/// date: 上位バイトが月寄り、下位バイトが日寄りのパック値(未確定、暫定実装)
-/// time: 5bit時 + 6bit分 + 5bit秒/2 (FATタイムスタンプ形式)
-/// 012での検証で妥当な値になることを確認しているが、別レコードでの
-/// 追加検証はまだ済んでいないため、変換結果はあくまで暫定表示として扱う。
+/// date(WORD)・btime/etime(WORD)をデコードする。
+///
+/// 訂正(2026-08-03): 当初はDOS FAT形式(ビットパック)と推測していたが誤りだった。
+/// JI3URSとの複数レコードをHAMLOG側の履歴と突き合わせて検証した結果、
+/// 実際のフォーマットは以下の通り(確定):
+/// date: 月*100+日 の単純な10進パック値 (例: 8月3日 = 0x0323 = 803)
+/// time: 深夜0時からの経過秒数を2で割った値 (time=0は未記録を意味し、00:00:00表示になる)
 fn decode_datetime(year_byte: u8, date: u16, time: u16) -> String {
     let year = if year_byte < 50 {
         2000 + year_byte as u32
     } else {
         1900 + year_byte as u32
     };
-    let month = (date >> 5) & 0x0f;
-    let day = date & 0x1f;
-    let hour = (time >> 11) & 0x1f;
-    let minute = (time >> 5) & 0x3f;
-    let second = (time & 0x1f) * 2;
+
+    // date は月*100+日 の単純な10進パック値(2026-08-03の実データで検証済み)
+    let month = date / 100;
+    let day = date % 100;
+
+    // time は「深夜0時からの経過秒数 / 2」を素直に格納した値。
+    // time=0(未記録)の場合は自然に00:00:00になる
+    let total_seconds = time as u32 * 2;
+    let hour = total_seconds / 3600;
+    let minute = (total_seconds % 3600) / 60;
+    let second = total_seconds % 60;
+
     format!(
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
         year, month, day, hour, minute, second
@@ -143,7 +152,7 @@ pub fn find_all_qsos(mdt_path: &str) -> Vec<QsoRecord> {
             // band/mode/fqの変換テーブルが未確定のため、周波数欄には
             // 記事欄(rem)の内容を暫定的に流用する(GL等が書かれていることが多い)
             freq_mhz: rem,
-            qso_mode: "MMSSTV".to_string(),
+            qso_mode: "SSTV".to_string(),
             time_on: decode_datetime(year_byte, date, btime),
             time_off: decode_datetime(year_byte, date, etime),
         });
