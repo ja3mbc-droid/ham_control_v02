@@ -204,6 +204,10 @@ impl App {
         if dp.len() != 3 || tp.len() != 3 {
             return utc.to_string();
         }
+        // tp[2](秒)は"04"のほか、FreeDVのように"04 UTC"のように末尾へ
+        // タイムゾーン等の余計な文字列が付くケースがあるため、先頭の
+        // 数字部分だけを取り出してからパースする(それ以外はそのまま)。
+        let sec_str = tp[2].split_whitespace().next().unwrap_or(tp[2]);
         let parsed: Option<(u32, u32, u32, u32, u32, u32)> = (|| {
             Some((
                 dp[0].parse().ok()?,
@@ -211,7 +215,7 @@ impl App {
                 dp[2].parse().ok()?,
                 tp[0].parse().ok()?,
                 tp[1].parse().ok()?,
-                tp[2].parse().ok()?,
+                sec_str.parse().ok()?,
             ))
         })();
         let (y, mo, d, h, mi, s) = match parsed {
